@@ -304,3 +304,11 @@ Inspection des six documents et de Git ; `origin/main` contient un commit initia
 ### Suite
 
 Stabiliser les contrats, implémenter dans des worktrees isolés, intégrer puis vérifier les crashs, droits, réparations, restauration et artefacts. Compléter cette entrée avec les résultats réels et les limites avant la livraison.
+
+### Reprise d'exécution — 2026-10-05
+
+Le plan est explicitement accepté pour implémentation. L'orchestrateur conserve la conception ; les sous-agents sont réservés aux tâches bornées de code, de validation et de documentation. Le premier chantier Luna réellement lancé pendant cette reprise porte sur les contrats, la configuration et les primitives de domaine, dans un nouveau worktree dédié depuis `1f22a1b`.
+
+Correction factuelle de l'environnement indiqué plus haut : `uv python list --only-installed` relève maintenant Python 3.12.13 disponible ; Docker client/serveur 29.8.0 fonctionne. Le contrôle initial de cette reprise retrouve un dépôt propre et un seul worktree enregistré, celui d'intégration ; les anciennes branches sont conservées. Aucun nettoyage manuel n'a été effectué.
+
+L'acceptation porte sur le backend local complet et les artefacts AWS vérifiés statiquement. Sans accès fédéré AWS, aucun déploiement ni résultat de qualification AWS ne sera annoncé. Les résultats applicatifs restent à obtenir.
