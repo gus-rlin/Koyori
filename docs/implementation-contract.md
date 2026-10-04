@@ -53,7 +53,7 @@ Mutations : `Idempotency-Key` ; amendements et suppressions : `If-Match`. Expans
 ## Exécutables et infrastructures
 
 - API locale : `uvicorn koyori.control.app:create_app --factory --host 0.0.0.0 --port 8080` dans le conteneur ; publication hôte sur loopback.
-- Local : `python -m koyori.workers.cli publisher|workflow|repair` ; la projection d'activité doit être consommée par un de ces services ou un service explicite convenu avec infrastructure.
+- Local : `python -m koyori.workers.cli publisher|workflow|repair|activity` ; le service dédié `activity` consomme la file d'activité et produit le flux durable.
 - CLI synthétique : `python -m koyori.demo seed|token|step-up`. L'initialisation est volontaire, idempotente et ne remplace pas les droits existants. Clés JWT et curseur dans volume local ignoré, jamais dans l'image ou Git.
 - Lambda : `koyori.control.lambda_handler.handler` et `koyori.workers.lambda_handlers.publish|consume|dispatch|reconcile|repair|project_activity`.
 - Publicateur local : DynamoDB vers les files ElasticMQ de workflow et d'activité ; AWS : streams/outbox vers EventBridge puis SQS. Base canonique et intentions permettent une reprise même après perte des files locales.

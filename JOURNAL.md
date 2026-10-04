@@ -305,10 +305,14 @@ Inspection des six documents et de Git ; `origin/main` contient un commit initia
 
 Stabiliser les contrats, implémenter dans des worktrees isolés, intégrer puis vérifier les crashs, droits, réparations, restauration et artefacts. Compléter cette entrée avec les résultats réels et les limites avant la livraison.
 
-### Reprise d'exécution — 2026-10-05
+### Exécution du plan validé — 2026-10-05
 
-Le plan est explicitement accepté pour implémentation. L'orchestrateur conserve la conception ; les sous-agents sont réservés aux tâches bornées de code, de validation et de documentation. Le premier chantier Luna réellement lancé pendant cette reprise porte sur les contrats, la configuration et les primitives de domaine, dans un nouveau worktree dédié depuis `1f22a1b`.
+L'utilisateur demande explicitement l'implémentation du plan. Le mode d'exécution est désormais actif. La livraison attendue est le backend local complet, les preuves de vérification et les artefacts AWS contrôlés statiquement ; la qualification sur les services AWS reste distincte, sans accès au compte ni déploiement pendant cette tâche.
 
-Correction factuelle de l'environnement indiqué plus haut : `uv python list --only-installed` relève maintenant Python 3.12.13 disponible ; Docker client/serveur 29.8.0 fonctionne. Le contrôle initial de cette reprise retrouve un dépôt propre et un seul worktree enregistré, celui d'intégration ; les anciennes branches sont conservées. Aucun nettoyage manuel n'a été effectué.
+La nouvelle exploration préparatoire a réellement utilisé les agents Luna `explore_step1_contract`, `explore_validation_environment` et `research_stage1_aws_compatibility`, tous terminés en lecture seule. Le dépôt ne contient toujours pas d'application. Le changement local préexistant du journal est préservé. Le worktree documentaire existant est propre et ses commits sont déjà dans la branche d'intégration.
 
-L'acceptation porte sur le backend local complet et les artefacts AWS vérifiés statiquement. Sans accès fédéré AWS, aucun déploiement ni résultat de qualification AWS ne sera annoncé. Les résultats applicatifs restent à obtenir.
+Correction factuelle de l'environnement décrit plus haut : Python 3.12.13 est installé via uv 0.11.28 ; le Python du PATH est 3.10.6. Docker Engine 29.8.0 et Compose 5.5.1 sont opérationnels. Les images DynamoDB Local et ElasticMQ devront être obtenues. Un worker `activity` dédié est retenu pour lever l'option de consommation du flux d'activité dans le contrat.
+
+Les sources primaires consultées le 2026-10-05 confirment deux limites à intégrer aux recettes : DynamoDB Local ne reproduit pas les conflits transactionnels du service et ne prouve pas sa cohérence de lecture ; ElasticMQ exige une persistance des messages explicite. Les tests de conflits incluront une injection contrôlée. La production ne doit pas accepter l'émetteur d'identité synthétique local.
+
+La prochaine étape est le chantier contrats et stockage dans son propre worktree, puis les lots accès/API, travail durable, infrastructure et documentation. Aucun contrôle applicatif n'est encore possible ; aucune ressource AWS ni publication n'a été créée.
