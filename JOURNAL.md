@@ -501,3 +501,40 @@ Les fixtures existantes permettent de reproduire le plafond et de vérifier les 
 ### Suite
 
 Consulter la CI du correctif et les nouveaux retours de la PR avant fusion. Les mêmes limites de qualification AWS et de contribution Open Source complémentaire demeurent ; aucune fusion réalisée. Les traces de revue antérieures restent historiques, distinctes des deux corrections présentes.
+
+## JRN-011 — 2026-10-05 — Réconciliation des pauses et des adhésions expirées, origine des preuves
+
+### Objectif et état
+
+Terminé pour les corrections et les vérifications des trois constats de la revue du commit `c8b7df1`. Cette entrée accompagne leur commit et leur publication sur la branche de la PR #1 ; aucune fusion demandée.
+
+### Réalisations
+
+Les tâches en pause gardent une intention durable de contrôle des droits. Le worker reprogramme ce contrôle tant que l'autorisation reste valable, sans checkpoint ni bail ; sinon il termine la tâche et libère son quota. L'ajout d'un membre retire les adhésions expirées, leurs liens et compteurs dans sa propre transaction. Le rapport distingue l'exécution GitHub Actions via `GITHUB_ACTIONS`.
+
+### Choix et raisons
+
+Réutiliser les intentions, révisions, révocations et transactions existantes ; aucune dépendance ni nouveau service. Le contrôle des pauses utilise l'intervalle de bail existant et le sweep de réparation. Les retraits d'adhésions sont regroupés avec une seule écriture du foyer ; le remplacement d'une adhésion expirée par celle du même principal conserve sa place mais change sa génération d'accès. Le signal GitHub est confirmé dans la [documentation officielle](https://docs.github.com/en/actions/reference/workflows-and-actions/variables), consultée le 2026-10-05.
+
+### Difficultés et résolution
+
+Les six régressions pertinentes échouent avant correction : trois pertes d'autorisation d'une pause, deux admissions après expiration, un rapport sous signal Actions. Après correction, le test DynamoDB atteint l'authentification mais échoue parce que son horloge est avancée de dix secondes alors que l'émetteur de preuve utilise l'heure réelle. Le scénario est repositionné dix secondes dans le passé, puis amené à l'expiration à l'heure réelle, sans modifier le contrôle de fraîcheur du produit.
+
+### Ce qui a bien fonctionné
+
+Les tests ciblés vérifient les défauts avant modification et réutilisent le même domaine contre MemoryStore et DynamoDB Local. L'injection d'une mise à jour concurrente du profil confirme le rollback des retraits préparés.
+
+### Vérifications
+
+- `KOYORI_INTEGRATION=1 uv run --no-sync pytest -q --junitxml=artifacts/all-tests.xml` : **79 tests passés, aucune exclusion**. Les six régressions auparavant en échec passent ; deux contrôles du rapport local restent passants. Ruff et format : succès. Avertissement Starlette/httpx déjà consigné en JRN-007.
+- Image Docker et bundle Linux Lambda reconstruits ; services recréés. `scripts/verify_local.py` : **PASS**, avec interruption après checkpoint, redémarrage du stockage/API et reprise de la même tâche. Synthèse CDK : code 0 ; cinq tests du nouveau template réussis.
+- `scripts/record_evidence.py` contrôle la concordance des sources embarquées et régénère les empreintes avec 79 tests. Le rapport effectivement généré localement garde `githubWorkflowExecuted: false` ; les valeurs absent/faux/vrai du signal sont testées avec des artefacts synthétiques, sans prétendre à une exécution distante.
+- Dépendances et lock inchangés : audit de JRN-007 réutilisé, non réexécuté. Aucun déploiement ou qualification AWS, ni nouvelle note de revue indépendante. Les deux contrôles GitHub de `c8b7df1` sont réussis ; aucun résultat distant du nouveau correctif n'est anticipé.
+
+### Retour sur les outils
+
+`senior-code-basics`, Git, uv, pytest, Ruff, PowerShell et apply_patch : retours inchangés de JRN-010. DynamoDB Local permet l'injection d'un conflit réel ; `web.run` confirme le signal officiel GitHub Actions. Docker et CDK vérifient les artefacts reconstruits et la reprise. GitHub CLI inspecte la PR et permet de mettre à jour sa description via l'API REST, contournement documenté en JRN-010. Aucun service AWS distant utilisé ; services Koyori locaux actifs.
+
+### Suite
+
+Consulter la CI et les nouveaux retours de la PR avant fusion. La libération des quotas de tâches en pause intervient au contrôle périodique des droits ; le retrait des adhésions expirées est réalisé à l'admission suivante. Le socle n'étant pas déployé sur AWS, aucun rattrapage de données de production n'est requis. Les limites de qualification AWS et de contribution complémentaire Open Source demeurent.

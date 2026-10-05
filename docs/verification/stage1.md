@@ -8,7 +8,9 @@ Deux corrections ciblées des réponses d'erreur HTTP sont consignées dans JRN-
 
 ## Corrections de la revue de PR — 2026-10-05
 
-JRN-010 corrige le builder Lambda fixé sur `linux/amd64` et la libération transactionnelle des places de foyer à la révocation. **71 tests passent sans exclusion**, dont plafond de huit foyers, huit révocations suivies d'un nouvel ajout ou d'une création, réinscription, rollback concurrent et rejeu idempotent sur DynamoDB Local. Le bundle construit avec `DOCKER_DEFAULT_PLATFORM=linux/arm64` contient trois bibliothèques natives ELF x86_64, importées avec succès dans un conteneur x86_64 ; un hôte ARM64 réel n'a pas été utilisé. Ruff, format, recette Docker de récupération, synthèse CDK et ses cinq tests passent. Les [empreintes actuelles](artifact-evidence.json) correspondent à ces corrections.
+JRN-010 corrige le builder Lambda fixé sur `linux/amd64` et la libération transactionnelle des places de foyer à la révocation. **71 tests passent sans exclusion**, dont plafond de huit foyers, huit révocations suivies d'un nouvel ajout ou d'une création, réinscription, rollback concurrent et rejeu idempotent sur DynamoDB Local. Le bundle construit avec `DOCKER_DEFAULT_PLATFORM=linux/arm64` contient trois bibliothèques natives ELF x86_64, importées avec succès dans un conteneur x86_64 ; un hôte ARM64 réel n'a pas été utilisé. Ruff, format, recette Docker de récupération, synthèse CDK et ses cinq tests passent. Les empreintes de cette version sont conservées au commit `c8b7df1`.
+
+JRN-011 préserve le contrôle durable des droits des tâches en pause et libère leur quota après révocation, expiration ou réinscription du propriétaire ; une pause autorisée reste inchangée, sans checkpoint exécuté. L'admission d'un membre réconcilie les adhésions expirées et leurs compteurs dans la même transaction. **79 tests passent sans exclusion**, dont sept expirations simultanées, remplacement et réinscription, conflit concurrent avec rollback et rejeu idempotent sur DynamoDB Local. Le rapport détecte GitHub Actions à partir de `GITHUB_ACTIONS` ; les cas absent, faux et vrai sont vérifiés avec des artefacts synthétiques. Les [empreintes actuelles](artifact-evidence.json) correspondent aux vérifications locales de ce correctif.
 
 ## Recettes et preuves
 
@@ -35,7 +37,7 @@ Les rapports JUnit, bundle Lambda, SBOM, template CDK et rapport Docker sont gé
 
 [Empreintes et résultats observés](artifact-evidence.json) lie sources, lock, image, bundle et template. [Historique des revues](review-stage1.md) conserve les constats et leurs corrections ; une note de revue ne remplace pas la qualification des services distants.
 
-La CI est définie dans `.github/workflows/verify.yaml`, avec actions vérifiées et fixées par commit. La [PR #1](https://github.com/gus-rlin/Koyori/pull/1) publie la branche vers `main` ; les deux contrôles GitHub du commit `4a63a3a` ont réussi. La CI des corrections de JRN-010 reste à consulter après leur publication. Les empreintes JSON décrivent les vérifications locales du correctif.
+La CI est définie dans `.github/workflows/verify.yaml`, avec actions vérifiées et fixées par commit. La [PR #1](https://github.com/gus-rlin/Koyori/pull/1) publie la branche vers `main` ; les deux contrôles GitHub du commit `c8b7df1` ont réussi. La CI des corrections de JRN-011 reste à consulter après leur publication. Le champ `githubWorkflowExecuted` reste faux dans le rapport local et devient vrai dans les preuves produites par GitHub Actions.
 
 ## Sources techniques
 

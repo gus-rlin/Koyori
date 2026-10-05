@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import subprocess
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -79,7 +80,7 @@ def main():
         "dockerRecovery": recovery["checks"],
         "runtimeDependencyAudit": "no known vulnerabilities found",
         "awsDeployedOrQualified": False,
-        "githubWorkflowExecuted": False,
+        "githubWorkflowExecuted": os.getenv("GITHUB_ACTIONS") == "true",
     }
     output = ROOT / "docs/verification/artifact-evidence.json"
     output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

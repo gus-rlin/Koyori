@@ -333,6 +333,7 @@ class Domain:
 
     def add_member(self, ctx: Context, body: dict) -> tuple[dict, list[Change], bool]:
         self.admin(ctx)
+        now = self.now()
         principal = body["principalId"]
         if (
             body["kind"] == "shared"
@@ -343,12 +344,21 @@ class Domain:
             raise Problem(
                 422, "INVALID_MEMBER", "Administrators must be personal and non-expiring."
             )
-        if body["expiresAt"] is not None and body["expiresAt"] <= self.now():
+        if body["expiresAt"] is not None and body["expiresAt"] <= now:
             raise Problem(422, "INVALID_EXPIRY", "Expiry must be in the future.")
+        # Fold expired memberships into admission, with a single household write.
+        expired, changes = [], []
+        for pid in ctx.household.get("memberIds", [ctx.actor]):
+            current = self.store.get("Domain", (hkey(ctx.h), f"MEMBER#{pid}"))
+            if current and current["active"] and not active(current, now):
+                expired.append(pid)
+                if pid != principal:
+                    _, removals, _ = self.change_member(ctx, pid, {}, current["rev"], revoke=True)
+                    changes.extend(c for c in removals if c.key != (hkey(ctx.h), "META"))
         old = self.store.get("Domain", (hkey(ctx.h), f"MEMBER#{principal}"))
-        if old and old["active"]:
+        if active(old, now):
             raise Problem(409, "MEMBER_EXISTS", "Membership already exists; amend or revoke it.")
-        if ctx.household["memberCount"] >= self.settings.max_members:
+        if ctx.household["memberCount"] - len(expired) >= self.settings.max_members:
             raise Problem(429, "MEMBER_LIMIT", "Household membership limit reached.")
         profile = self.store.get("Domain", (f"P#{principal}", "PROFILE"))
         if profile and profile["kind"] != body["kind"]:
@@ -367,11 +377,12 @@ class Domain:
             member["rev"] = old["rev"] + 1
         household = revised(
             ctx.household,
-            memberCount=ctx.household["memberCount"] + 1,
-            memberIds=[*ctx.household.get("memberIds", [ctx.actor]), principal],
+            memberCount=ctx.household["memberCount"] - len(expired) + 1,
+            memberIds=[p for p in ctx.household.get("memberIds", [ctx.actor]) if p not in expired]
+            + [principal],
             adminCount=ctx.household["adminCount"] + int(body["role"] == "admin"),
         )
-        changes = [
+        changes += [
             put("Domain", member, old),
             put("Domain", household, ctx.household),
             self.event(ctx, principal, member["rev"], kind="access"),
@@ -596,8 +607,9 @@ class Domain:
         new = revised(task, **values)
         writes = checks + [put("Domain", new, task), self.event(ctx, tid, new["rev"], wake=wake)]
         intent = self.store.get("Delivery", (f"RUN#{tid}", "META"))
-        if new["status"] == "READY":
-            writes.append(put("Delivery", self.run_intent(new, intent), intent))
+        if new["status"] in {"READY", "PAUSED"}:
+            due = self.now() + self.settings.lease_seconds if new["status"] == "PAUSED" else None
+            writes.append(put("Delivery", self.run_intent(new, intent, due), intent))
         elif intent:
             writes.append(put("Delivery", self.done_intent(intent), intent))
         if action == "cancel":

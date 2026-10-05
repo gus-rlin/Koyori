@@ -184,7 +184,7 @@ class Engine:
                 or intent["dueAt"] > self.domain.now()
             ):
                 return None
-            if task["status"] in TERMINAL | {"PAUSED"}:
+            if task["status"] in TERMINAL:
                 try:
                     self.store.transact(
                         [
@@ -219,6 +219,19 @@ class Engine:
                     ),
                     put("Delivery", self.domain.done_intent(intent), intent),
                     self.domain.event(ctx, tid, new["rev"]),
+                ]
+            elif task["status"] == "PAUSED":
+                # Keep checking authority without acquiring a lease or advancing checkpoints.
+                new = None
+                changes = checks + [
+                    guard("Domain", task),
+                    put(
+                        "Delivery",
+                        self.domain.run_intent(
+                            task, intent, self.domain.now() + self.settings.lease_seconds
+                        ),
+                        intent,
+                    ),
                 ]
             else:
                 new = revised(

@@ -99,6 +99,55 @@ def test_membership_slot_release_is_atomic_and_idempotent(dynamo):
     )
 
 
+@pytest.mark.parametrize("principal", ["replacement", "sam"])
+def test_expired_membership_slots_are_reconciled_atomically(dynamo, principal):
+    h = dynamo
+    h.clock.advance(-10)
+    expires = h.clock() + 10
+    expired = ["sam", "speaker", *[f"temporary{i}" for i in range(5)]]
+    for pid in expired:
+        ctx = h.domain.context("alex", h.h)
+        if pid in {"sam", "speaker"}:
+            _, writes, _ = h.domain.change_member(ctx, pid, {"expiresAt": expires}, 1, revoke=False)
+        else:
+            _, writes, _ = h.domain.add_member(
+                ctx, MemberCreate(principalId=pid, expiresAt=expires).model_dump()
+            )
+        h.domain.store.transact(ctx.guards() + writes)
+    h.clock.advance(10)
+    body = MemberCreate(principalId=principal).model_dump()
+    ctx = h.domain.context("alex", h.h)
+    _, admission, _ = h.domain.add_member(ctx, body)
+    other = h.domain.context("robin", h.h2)
+    _, addition, _ = h.domain.add_member(other, MemberCreate(principalId="temporary0").model_dump())
+    h.domain.store.transact(other.guards() + addition)
+    with pytest.raises(Conflict):
+        h.domain.store.transact(ctx.guards() + admission)
+    assert h.domain.context("alex", h.h).household["memberCount"] == 8
+    assert h.domain.store.get("Domain", (hkey(h.h), "MEMBER#sam"))["active"]
+    path = f"/v1/households/{h.h}/members"
+    rejected = h.client.post(path, json=body, headers=h.headers())
+    assert rejected.status_code == 403 and rejected.json()["code"] == "STEP_UP_REQUIRED"
+    assert h.domain.context("alex", h.h).household["memberCount"] == 8
+    grant = h.grant(f"POST {path}", body)
+    headers = h.headers(grant=grant)
+    first = h.client.post(path, json=body, headers=headers)
+    replay = h.client.post(path, json=body, headers=headers)
+    assert first.status_code == replay.status_code == 201
+    assert first.json() == replay.json()
+    household = h.domain.context("alex", h.h).household
+    assert household["memberCount"] == 2 and household["memberIds"] == ["alex", principal]
+    for pid in expired:
+        member = h.domain.store.get("Domain", (hkey(h.h), f"MEMBER#{pid}"))
+        profile = h.domain.store.get("Domain", (f"P#{pid}", "PROFILE"))
+        link = h.domain.store.get("Domain", (f"P#{pid}", f"H#{h.h}"))
+        assert member["active"] == (pid == principal)
+        assert link.get("active", True) == (pid == principal)
+        assert profile["householdCount"] == int(pid == principal) + int(pid == "temporary0")
+    if principal == "sam":
+        assert first.json()["accessEpoch"] == 2
+
+
 def test_real_queues_duplicate_after_publish_crash_and_partial_batch(dynamo):
     h = dynamo
     sqs = h.settings.client("sqs")

@@ -64,7 +64,7 @@ def test_pause_and_cancel_fence_worker_writes(harness):
     assert response.status_code == 202
     assert h.engine.advance(snapshot) is None
     intent = h.domain.store.get("Delivery", h.engine.run_key(tid))
-    assert intent["status"] == "DONE" and "GSI1PK" not in intent
+    assert intent["status"] == "PENDING" and intent["dueAt"] > h.clock()
     paused = h.task(tid)
     assert (
         h.client.post(
@@ -107,6 +107,49 @@ def test_revocation_and_policy_change_stop_current_execution(harness):
         == 200
     )
     assert h.engine.advance(snapshot)["status"] == "FAILED"
+
+
+@pytest.mark.parametrize("loss", ["revocation", "expiry", "reenrollment"])
+def test_paused_tasks_release_quota_after_owner_loses_authority(harness, loss):
+    from koyori.contracts import MemberCreate
+
+    h = harness
+    tid = h.command("sam")
+    path = f"/v1/households/{h.h}/members/sam"
+    assert (
+        h.client.patch(
+            path,
+            json={"expiresAt": h.clock() + 2 * h.settings.lease_seconds},
+            headers=h.headers(version=1),
+        ).status_code
+        == 200
+    )
+    assert (
+        h.client.post(f"/v1/tasks/{tid}/pause", headers=h.headers("sam", version=1)).status_code
+        == 202
+    )
+    paused = h.task(tid, "sam")
+    h.clock.advance(h.settings.lease_seconds)
+    h.engine.repair()
+    assert h.task(tid, "sam") == paused
+    assert h.domain.context("alex", h.h).household["activeTasks"] == 1
+    if loss != "expiry":
+        assert h.client.delete(path, headers=h.headers(version=2)).status_code == 200
+        if loss == "reenrollment":
+            ctx = h.domain.context("alex", h.h)
+            _, writes, _ = h.domain.add_member(ctx, MemberCreate(principalId="sam").model_dump())
+            h.domain.store.transact(ctx.guards() + writes)
+    else:
+        assert h.client.get(f"/v1/tasks/{tid}", headers=h.headers("alex")).status_code == 404
+    h.clock.advance(h.settings.lease_seconds)
+    h.engine.repair()
+    task = h.domain.store.get("Domain", (hkey(h.h), f"TASK#{tid}"))
+    assert task["status"] == "FAILED" and task["result"]["code"] == "AUTHORITY_REVOKED"
+    assert task["checkpoint"] == paused["checkpoint"] == 0
+    assert h.domain.context("alex", h.h).household["activeTasks"] == 0
+    assert h.domain.store.get("Delivery", h.engine.run_key(tid))["status"] == "DONE"
+    assert h.engine.repair() == 0
+    h.command()
 
 
 def test_publish_crash_and_repair_only_duplicate_delivery(harness):
@@ -208,7 +251,7 @@ def test_old_event_never_reopens_paused_or_terminal_task(harness, action):
     before = h.task(tid)
     h.clock.advance(15 * 86400)
     h.engine.consume(event)
-    assert h.engine.repair() == 0
+    assert h.engine.repair() == int(action == "pause")
     current = h.domain.store.get("Domain", (hkey(h.h), f"TASK#{tid}"))
     assert current["rev"] == before["rev"] and current["status"] == before["status"]
 
