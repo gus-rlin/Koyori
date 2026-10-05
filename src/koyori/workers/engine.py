@@ -109,7 +109,11 @@ class Engine:
                             _, checks = self.domain.task_access(ctx, event.aggregateId)
                             changes.extend(checks)
                         else:
-                            self.domain.admin(ctx)
+                            from koyori.object_access import event_access
+
+                            changes.extend(
+                                event_access(self.domain, ctx, event.type, event.aggregateId)
+                            )
                         changes.extend(ctx.guards())
                     except Problem as exc:
                         if exc.status in {403, 404}:
@@ -137,7 +141,7 @@ class Engine:
                                     aggregateId=event.aggregateId,
                                     aggregateVersion=event.aggregateVersion,
                                     occurredAt=event.occurredAt,
-                                    mode="sandbox",
+                                    mode=event.mode,
                                 ),
                             ),
                         ]

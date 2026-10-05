@@ -1,4 +1,4 @@
-# Manifeste de livraison — étape 1
+# Manifeste de livraison — étapes 1 et 2
 
 Contrat daté du 2026-10-05. La livraison acceptée est le backend local complet et les artefacts AWS vérifiables sans compte. Les preuves d'exécution AWS demeurent séparées.
 
@@ -14,7 +14,10 @@ Contrat daté du 2026-10-05. La livraison acceptée est le backend local complet
 | Activité | 1 | Réel ; compteurs et événements durables par membre | Projection dédupliquée et lecture canonique des droits ; pagination signée et liée au principal |
 | Exploitation locale | 1 | Réel via Docker, Python et scripts | Santé, erreurs expurgées, limites, images et dépendances verrouillées, recette de crash et restauration hors ligne |
 | Infrastructure AWS | 1 | Code et synthèse réels, exécution distante non qualifiée | Cognito, DynamoDB, EventBridge, SQS, Lambda, HTTP API, alarmes, sauvegardes ; assertions du template |
-| Mémoire, agenda et commerce | 2 | Différé ; aucun fournisseur connecté | Provenance, OAuth, budget, rapprochement ; commerce futur explicitement simulé |
+| Mémoire sourcée et contexte | 2 | Réel par HTTP/DynamoDB Local ; embeddings locaux simulés | Chronologie, clé, journées locales, correction/effacement, sources et droits actuels |
+| Recherche Titan/S3 Vectors | 2 | Adaptateurs et infrastructure préparés ; appels externes non qualifiés | 512 dimensions, filtres serveur, relecture canonique, plafond quotidien |
+| Google Calendar | 2 | OAuth/sync/push codés ; tests avec fournisseur fictif, compte réel non qualifié | Scopes read-only, sélection, chiffrement, refresh/révocation et sync paginé |
+| Commerce, approbations et budgets | 2 | Mécanismes réels ; fournisseur et commandes simulés | Devis exacts, montants entiers, réservation atomique, intention stable, rapprochement et reçus séparés |
 | Planification et apprentissage | 3 | Différé ; aucun modèle appelé | Plans bornés et travail durable existant ; procédures sans élévation des droits |
 | Voix, MCP et Alexa+ | 4 | Différé ; aucune intégration native | Canaux sur le même domaine, qualification distincte du canal représentant Alexa |
 
@@ -30,7 +33,9 @@ Le TDD propose Step Functions Standard pour les plans et attentes agentiques. L'
 
 ## Limites conservées
 
+L'étape 2 ajoute `Connections` pour les enveloppes OAuth et clés de notifications, avec permissions KMS séparées. Les souvenirs et les registres d'actions restent des préfixes typés dans `Domain` ; les index de références et vecteurs sont dérivés. Les rôles `connector` et `projection` réutilisent les intentions de `Delivery`. [Contrats détaillés](stage2.md). Ces choix ne changent pas la portée de la coordination prévue en étape 3.
+
 - Les tests des émulateurs ne démontrent ni les conflits transactionnels distribués de DynamoDB ni la cohérence des index AWS. Une injection contrôlée teste la réautorisation après conflit.
 - Aucune preuve de login Cognito, d'IAM exécuté, de restauration AWS, de coût AWS ou de comportement du bus distant n'est obtenue par la synthèse.
-- L'export local est hors ligne. Toute restauration se fait dans de nouvelles tables, avec writers arrêtés et contrôles avant remise en service. Le traitement des suppressions de mémoire et effets fournisseur appartient aux étapes suivantes.
+- L'export local est hors ligne. Toute restauration se fait dans de nouvelles tables, avec tous les writers arrêtés, y compris les connecteurs/projections. Les tombstones présents sont conservés ; une sauvegarde antérieure à une suppression nécessite une liste d'effacement plus récente avant remise en service. Ne pas réactiver de dispatch externe avant contrôle des actions et réservations. La qualification complète de restauration reste en étape 4.
 - L'idempotence du socle est conservée sans nettoyage automatique. La rétention et l'effacement des historiques seront définis avec les données personnelles ; aucun secret fournisseur ni donnée personnelle réelle n'est utilisé dans les recettes.

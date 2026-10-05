@@ -1,7 +1,9 @@
 """Local service readiness retries, then deliberate idempotent initialization."""
 
 import json
+import os
 import time
+from pathlib import Path
 
 from koyori.config import Settings
 from koyori.demo import seed
@@ -11,6 +13,15 @@ def main():
     settings = Settings.from_env()
     if settings.env != "local":
         raise ValueError("Bootstrap is local only")
+    key = Path(settings.token_key_file)
+    key.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with key.open("xb") as output:
+            output.write(os.urandom(32))
+        key.chmod(0o600)
+    except FileExistsError:
+        if len(key.read_bytes()) != 32:
+            raise ValueError("Invalid existing provider key") from None
     for attempt in range(30):
         try:
             settings.client("dynamodb").list_tables(Limit=1)

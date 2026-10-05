@@ -52,7 +52,7 @@ def main():
         bookmark = page["nextCursor"]
     else:
         raise RuntimeError("Qualification feed exceeds bounded catch-up")
-    stopped = ["workflow", "repair", "publisher", "activity"]
+    stopped = ["workflow", "repair", "publisher", "activity", "connector", "projection"]
     compose("stop", *stopped)
     process = None
     try:

@@ -1,8 +1,8 @@
-# Koyori — première partie du backend
+# Koyori — socle, mémoire et connecteurs contrôlés
 
 Le socle exécute une commande synthétique durable, avec identité signée, autorisations par objet, transactions, reprise après crash et activité persistante. Le même code Python sert l'API HTTP, les workers locaux et les handlers Lambda.
 
-**Périmètre livré : local Docker et préparation AWS.** L'authentification locale est un émetteur synthétique explicite. DynamoDB Local et ElasticMQ sont des émulateurs ; leurs résultats ne qualifient pas AWS. Mémoire, connecteurs, modèles, coordination agentique, voix et MCP appartiennent aux parties suivantes. Aucun achat ni appel à un modèle n'est effectué.
+**Périmètre livré : parties 1 et 2, local Docker et préparation AWS.** Mémoire sourcée, contexte, devis, approbations, budgets et registre d'actions fonctionnent par commandes explicites ; le commerce est simulé jusqu'aux reçus. Google Calendar OAuth et Titan/S3 Vectors sont codés avec tests de contrat ; leurs accès réels restent à qualifier. Identité locale synthétique, DynamoDB Local et ElasticMQ émulés. Aucun achat réel ni appel réel à un modèle n'est effectué. Coordination, voix et MCP restent aux parties suivantes.
 
 ## Démarrer
 
@@ -38,6 +38,7 @@ uv run pytest -q --junitxml=artifacts/all-tests.xml
 uv run ruff check src tests scripts infrastructure
 uv run ruff format --check src tests scripts infrastructure
 uv run python scripts/verify_local.py
+uv run python scripts/verify_stage2.py
 ```
 
 La recette Docker tue un worker vivant après le premier checkpoint, redémarre stockage et API, rejoue la commande et vérifie la fin de la même tâche. Elle arrête temporairement les services de ce projet, puis les redémarre. Sans `KOYORI_INTEGRATION=1`, les tests des émulateurs sont explicitement ignorés. Les assertions AWS exigent d'abord la construction et la synthèse ci-dessous.
@@ -51,7 +52,7 @@ uv run pytest -q tests/test_infrastructure.py
 uv run pip-audit --path artifacts/lambda --format cyclonedx-json --output artifacts/runtime-sbom.json
 ```
 
-Le bundle Lambda contient les roues Linux verrouillées, pas celles de Windows. CDK synthétise Cognito, trois tables DynamoDB, EventBridge, deux files avec DLQ, cinq Lambda, API Gateway, alarmes, PITR et sauvegarde quotidienne. La synthèse ne contacte aucun compte. Le callback OAuth par défaut `example.invalid` doit être remplacé avant un déploiement autorisé ; aucun déploiement n'est exécuté ici. Les coûts AWS observés sont inexistants car aucune ressource n'a été créée.
+Le bundle Lambda contient les roues Linux verrouillées. CDK synthétise Cognito, quatre tables DynamoDB, EventBridge, deux files avec DLQ, sept Lambda, KMS, S3 Vectors, API Gateway, alarmes, PITR et sauvegardes quotidiennes. Aucun compte n'est contacté ni déploiement exécuté. Le callback Cognito `example.invalid`, le client/secret Google et les accès aux modèles doivent être configurés avant qualification distante. Aucun coût AWS observé ; aucune ressource distante créée.
 
 ## Documents de reprise
 
@@ -60,6 +61,8 @@ Le bundle Lambda contient les roues Linux verrouillées, pas celles de Windows. 
 - [Exploitation, sauvegarde et restauration](docs/operations.md)
 - [Contrat d'implémentation](docs/implementation-contract.md)
 - [Vérifications de l'étape 1](docs/verification/stage1.md)
+- [Contrats et configuration de l'étape 2](docs/stage2.md)
+- [Vérifications de l'étape 2](docs/verification/stage2.md)
 - [Journal du développement](JOURNAL.md)
 
 La licence du dépôt est [Apache 2.0](LICENSE). Le travail local ne constitue pas une publication, une contribution complémentaire Open Source ou une qualification de l'intégration Alexa+.

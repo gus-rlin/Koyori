@@ -40,3 +40,11 @@ La qualification d'une restauration AWS, des suppressions de mémoire et des obl
 ## Arrêter sans effacer
 
 `docker compose down` arrête les conteneurs de Koyori et conserve leurs volumes. Le sous-réseau et les ports sont propres au projet. Les tests d'intégration créent et suppriment uniquement leurs namespaces temporaires et files `test-*` ; ils n'utilisent pas les tables de la démonstration.
+
+## Complément étape 2
+
+Ajouter les services `connector` et `projection` à tout arrêt des writers et à toute reprise. La quatrième table `Connections` contient des enveloppes chiffrées ; sauvegarder séparément et confidentiellement la clé locale du volume `provider-key` pour pouvoir relire un export. Les exports anciens à trois tables restent restaurables, mais ne contiennent aucune connexion de cette étape. Les tombstones de mémoire sont restaurés ; avant ouverture d'une sauvegarde antérieure, appliquer les effacements plus récents et rapprocher actions/réservations. Une restauration ne doit pas déclencher silencieusement des commandes externes. Voir [configuration, statuts et limites de l'étape 2](stage2.md).
+
+Les rôles du socle gardent leur timeout de 30 secondes ; API et projection disposent de 60 secondes, connecteur de 180 secondes. Les lots et appels restent bornés. Lors d'un futur déploiement progressif, provisionner d'abord les nouvelles ressources et mettre à jour les consommateurs pour les nouveaux types d'événement, puis activer l'API de l'étape 2. Les intentions et enveloppes du socle restent compatibles. Aucun déploiement n'a été réalisé dans cette livraison.
+
+Si le réseau utilise une autorité de certification supplémentaire déjà approuvée sur le poste, fournir un bundle PEM public de confiance au builder, sans désactiver TLS. `KOYORI_BUILD_CA_FILE` monte ce fichier en lecture seule dans le builder Lambda et configure `PIP_CERT`. Pour l'image : `docker build --secret id=trusted_ca,src=CHEMIN_PEM -t koyori-stage1:local .`, puis `docker compose up -d --no-build`. Le secret de build reste hors de l'image finale ; ce fichier ne doit contenir aucune clé privée. La configuration standard sans certificat supplémentaire conserve son comportement.

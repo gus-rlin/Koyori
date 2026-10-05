@@ -85,13 +85,21 @@ class Event(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True)
     schemaVersion: Literal["1.0"]
     eventId: Identifier
-    type: Literal["koyori.task.changed.v1", "koyori.access.changed.v1", "koyori.policy.changed.v1"]
+    type: Literal[
+        "koyori.task.changed.v1",
+        "koyori.access.changed.v1",
+        "koyori.policy.changed.v1",
+        "koyori.memory.changed.v1",
+        "koyori.action.changed.v1",
+        "koyori.connection.changed.v1",
+        "koyori.calendar.changed.v1",
+    ]
     occurredAt: int
     householdId: Identifier
     actorId: Identifier
     aggregateId: Identifier
     aggregateVersion: int = Field(ge=1)
-    mode: Literal["sandbox"]
+    mode: Literal["sandbox", "simulated", "real"]
     wake: bool = False
     traceparent: str | None = Field(default=None, max_length=55)
 

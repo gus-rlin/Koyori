@@ -4,7 +4,7 @@ Voir `/docs` et `/openapi.json` dans l'environnement local pour les schémas com
 
 ## Identité et droits
 
-Chaque route `/v1` exige un bearer access token RS256. L'émetteur, le client, l'usage `access`, la portée `koyori/control`, les dates et l'audience lorsqu'elle est présente sont vérifiés. Un ID token est réservé à la preuve fraîche et n'est jamais un bearer valide. La production n'accepte ni l'émetteur synthétique ni des endpoints AWS locaux.
+Les routes métier `/v1` exigent un bearer access token RS256. L'émetteur, le client, l'usage `access`, la portée `koyori/control`, les dates et l'audience lorsqu'elle est présente sont vérifiés. Un ID token est réservé à la preuve fraîche et n'est jamais un bearer valide. La production n'accepte ni l'émetteur synthétique ni des endpoints AWS locaux. Les callbacks OAuth et webhooks de l'étape 2 utilisent leurs propres contrats d'état unique ou d'authenticité fournisseur, décrits dans [stage2.md](stage2.md).
 
 `X-Household-Id` sélectionne le foyer des routes tâches, politiques, preuve fraîche et activité. Les routes `/households/{id}` autorisent le foyer de leur chemin. Ni un header, ni un champ du corps ne choisit la personne effective. Le type personnel/partagé provient du profil serveur, pas du token du client.
 
@@ -54,3 +54,7 @@ Les réponses portent `X-Request-Id`, `Cache-Control: no-store` et `X-Content-Ty
 Les listes renvoient au maximum cinquante candidats par page. Une page filtrée peut être vide tout en donnant un `nextCursor` ; continuer jusqu'à `null`. Les curseurs signés expirent après une heure et ne sont pas transférables à un autre principal, foyer ou endpoint.
 
 Les curseurs sont aussi chiffrés avec AES-GCM pour ne pas révéler une clé d'objet privé rencontrée lors de la pagination. Le flux d'activité retourne `resumeCursor`, y compris en fin de lecture : le conserver pour lire les prochains événements avec `?cursor=...`. `nextCursor` sert à finir le rattrapage courant ; `resumeCursor` garde le point atteint après celui-ci. Les droits sont revalidés à chaque lecture.
+
+## Extension étape 2
+
+Les contrats mémoire, contexte, Google Calendar, devis, approbations, budgets et actions sont décrits dans [stage2.md](stage2.md). Ils réutilisent l'identité, le foyer, le step-up, les clés d'idempotence et les préconditions du présent contrat. La première configuration de budget utilise exceptionnellement `If-Match: "0"` ; les autres amendements exigent une révision positive.

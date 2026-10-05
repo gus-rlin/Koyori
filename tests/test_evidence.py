@@ -16,6 +16,7 @@ def test_evidence_identifies_github_actions(tmp_path, monkeypatch, github_action
     files = {
         "artifacts/all-tests.xml": '<testsuites><testsuite tests="1"/></testsuites>',
         "artifacts/local-recovery.json": '{"result":"PASS","checks":[]}',
+        "artifacts/stage2-recovery.json": '{"result":"PASS","checks":[]}',
         "artifacts/runtime-sbom.json": '{"vulnerabilities":[]}',
         "cdk.out/KoyoriFoundation.template.json": "{}",
         "src/koyori/example.py": "# synthetic test fixture\n",

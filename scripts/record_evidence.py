@@ -30,6 +30,9 @@ def main():
     recovery = json.loads((ROOT / "artifacts/local-recovery.json").read_text())
     if recovery["result"] != "PASS":
         raise ValueError("Docker recovery not verified")
+    stage2_recovery = json.loads((ROOT / "artifacts/stage2-recovery.json").read_text())
+    if stage2_recovery["result"] != "PASS":
+        raise ValueError("Stage-two Docker recovery not verified")
     for source in (ROOT / "src/koyori").rglob("*.py"):
         bundled = ROOT / "artifacts/lambda/koyori" / source.relative_to(ROOT / "src/koyori")
         if bundled.read_bytes() != source.read_bytes():
@@ -68,7 +71,7 @@ def main():
     report = {
         "schemaVersion": "1.0",
         "dateEuropeParis": datetime.now(ZoneInfo("Europe/Paris")).isoformat(),
-        "scope": "local-complete-and-aws-preparation",
+        "scope": "stages-one-and-two-local-and-aws-preparation",
         "sourceSha256": tree_hash(sources),
         "lockSha256": hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest(),
         "lambdaBundleSha256": tree_hash(bundle_files),
@@ -78,6 +81,9 @@ def main():
         "runtimeImageId": image_id,
         "pytest": counts,
         "dockerRecovery": recovery["checks"],
+        "stage2Recovery": stage2_recovery["checks"],
+        "googleQualified": False,
+        "bedrockAndVectorsQualified": False,
         "runtimeDependencyAudit": "no known vulnerabilities found",
         "awsDeployedOrQualified": False,
         "githubWorkflowExecuted": os.getenv("GITHUB_ACTIONS") == "true",
