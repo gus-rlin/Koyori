@@ -49,6 +49,8 @@ Les états du socle sont `READY`, `RUNNING`, `PAUSED`, `SUCCEEDED`, `FAILED`, `C
 
 Les erreurs utilisent `application/problem+json`, un code stable, `requestId` et `retryable`. `401` : token invalide ; `403` : opération refusée ; `404` : objet absent ou inaccessible ; `409` : conflit métier ou d'idempotence ; `412` : révision obsolète ; `422` : schéma invalide ; `428` : précondition absente ; `429` : quota ; `503` : dépendance ou contention temporaire. `429/503` fournissent `Retry-After`. Les erreurs, traces et logs ne reproduisent ni corps métier ni token.
 
+Les réponses portent `X-Request-Id`, `Cache-Control: no-store` et `X-Content-Type-Options: nosniff`, y compris les rejets précoces `413/422`. Le `requestId` d'une erreur correspond à son en-tête et à sa trace HTTP. Une réponse `405` conserve l'en-tête `Allow` indiquant les méthodes acceptées.
+
 Les listes renvoient au maximum cinquante candidats par page. Une page filtrée peut être vide tout en donnant un `nextCursor` ; continuer jusqu'à `null`. Les curseurs signés expirent après une heure et ne sont pas transférables à un autre principal, foyer ou endpoint.
 
 Les curseurs sont aussi chiffrés avec AES-GCM pour ne pas révéler une clé d'objet privé rencontrée lors de la pagination. Le flux d'activité retourne `resumeCursor`, y compris en fin de lecture : le conserver pour lire les prochains événements avec `?cursor=...`. `nextCursor` sert à finir le rattrapage courant ; `resumeCursor` garde le point atteint après celui-ci. Les droits sont revalidés à chaque lecture.

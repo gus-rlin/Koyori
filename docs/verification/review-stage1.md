@@ -22,7 +22,7 @@ Diff stagé contre `81bb3d2505dcee08dc69dbb73e73cbf775422c5c`, branche `gus-rlin
 
 ## Seconde révision
 
-**PASS, 9,3/10.** Aucun constat actionnable restant observé ; aucun défaut critique ou élevé restant. Le reviewer a confirmé la levée des trois constats sur le diff stagé contre le même commit de base. Empreinte des sources : `47056365fd20371e8ac97fbc314b78d5bfe0bb481a49fd989e81774982433f4a`, conforme aux [preuves d'artefacts](artifact-evidence.json). L'arbre de travail correspondait à l'index lors de la revue ; les modifications suivantes complètent uniquement les documents de livraison et le journal.
+**PASS, 9,3/10.** Aucun constat actionnable restant observé ; aucun défaut critique ou élevé restant. Le reviewer a confirmé la levée des trois constats sur le diff stagé contre le même commit de base. Empreinte des sources : `47056365fd20371e8ac97fbc314b78d5bfe0bb481a49fd989e81774982433f4a`, conservée dans les preuves de la livraison initiale au commit `4cb4393`. L'arbre de travail correspondait à l'index lors de la revue ; les modifications immédiatement suivantes complétaient uniquement les documents de livraison et le journal.
 
 | Catégorie | Note finale | Limite ou observation |
 | --- | ---: | --- |
@@ -35,3 +35,5 @@ Diff stagé contre `81bb3d2505dcee08dc69dbb73e73cbf775422c5c`, branche `gus-rlin
 Les injections indépendantes supplémentaires opposent réception à pause/annulation, checkpoint à pause et acquisition à amendement. Les écritures périmées sont refusées. Ruff et format passent ; les empreintes source, lock, bundle et template concordent ; les cinq services actifs utilisent l'image enregistrée.
 
 La nouvelle recette Docker PASS et l'audit runtime ont été exécutés par le superviseur puis inspectés par le reviewer, qui ne les a pas rejoués. Aucun login Cognito, IAM exécuté, bus distant ou restauration AWS n'a été qualifié. Le workflow GitHub n'a pas été publié ni exécuté. Le reviewer n'a modifié aucun fichier.
+
+Après cette livraison, les retouches HTTP de JRN-008 ont été vérifiées par l'agent principal : [résultats et empreintes actuels](stage1.md). Aucune nouvelle revue indépendante ni nouvelle note n'est attribuée à ces retouches ; le verdict ci-dessus conserve sa portée initiale.

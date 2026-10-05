@@ -81,9 +81,11 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
 
     @app.exception_handler(HTTPException)
     async def http_error(request, exc):
-        return problem_response(
+        response = problem_response(
             request, Problem(exc.status_code, "HTTP_ERROR", "Request unavailable.")
         )
+        response.headers.update(exc.headers or {})
+        return response
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
@@ -95,9 +97,7 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > 32768:
-                    return problem_response(
-                        request, Problem(413, "REQUEST_TOO_LARGE", "Request exceeds 32 KiB.")
-                    )
+                    raise Problem(413, "REQUEST_TOO_LARGE", "Request exceeds 32 KiB.")
                 chunks.append(chunk)
             request._body = b"".join(chunks)
             if request.method == "DELETE" or request.url.path.endswith(
@@ -109,15 +109,14 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
                         if payload not in ({}, {"schemaVersion": "1.0"}):
                             raise ValueError
                     except (ValueError, UnicodeDecodeError):
-                        return problem_response(
-                            request,
-                            Problem(
-                                422,
-                                "INVALID_REQUEST",
-                                "This operation accepts no business arguments.",
-                            ),
-                        )
+                        raise Problem(
+                            422,
+                            "INVALID_REQUEST",
+                            "This operation accepts no business arguments.",
+                        ) from None
             response = await call_next(request)
+        except Problem as exc:
+            response = problem_response(request, exc)
         except Exception:
             LOG.error(
                 json.dumps({"event": "request_failed", "requestId": request.state.request_id})

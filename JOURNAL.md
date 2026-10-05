@@ -386,3 +386,44 @@ Les preuves et l'historique des revues sont conservés dans `docs/verification`.
 **Retour sur les outils :** `senior-code-basics` a servi à comprendre les chemins, vérifier les effets et adapter les recettes aux risques. uv 0.11.28 et Python 3.12.13 fournissent un environnement reproductible après utilisation du magasin système de certificats ; réutilisation souhaitée pour le lock commun local/Linux. FastAPI/Pydantic rendent les schémas et erreurs observables, boto3 sert effectivement DynamoDB Local et ElasticMQ ; réutilisation retenue grâce au même adaptateur et aux validations transactionnelles. Docker 29.8.0/Compose 5.5.1 démontrent la persistance et le redémarrage ; sous-réseau et port explicites limitent les conflits locaux. CDK 2.272.0 produit les ressources et IAM contrôlés par assertions ; réutilisation retenue, nettoyage Windows jsii à surveiller. PyJWT/cryptography vérifient les identités et protègent les curseurs ; aucun secret embarqué dans l'image API/workers. pytest/ruff/pip-audit apportent des résultats inspectables ; l'avertissement Starlette/httpx reste une dépréciation de l'outil de test. Le sous-agent Sol a réellement trouvé un défaut malgré 53 tests verts puis confirmé les corrections à 9,3/10. Aucun outil agentique, Kiro, Bedrock ou AgentCore utilisé. Aucun coût ni ressource AWS créés ; services locaux seuls actifs.
 
 **Suite :** aucune implémentation restante pour la première partie locale acceptée. Développer mémoire et connecteurs lors de l'étape 2, puis coordination et canaux aux étapes prévues. Avant toute activation AWS, qualifier login/PKCE et preuve fraîche Cognito, IAM exécuté, conflits distribués, bus/SQS/DLQ, alarmes et restauration en quarantaine, et relever coûts et ressources réellement actives. Apache 2.0 est conservée ; le dépôt et la contribution Open Source complémentaire n'ont pas été publiés par cette tâche, aucune pull request ni fusion n'est revendiquée. La stratégie Alexa+ avec AWS Builder et Open Source reste celle de la note de concept ; admissibilité, contribution complémentaire et dossier anglais restent à préparer sur des observations réelles.
+
+## JRN-008 — 2026-10-05 — Retouches ciblées avant PR
+
+### Objectif et état
+
+Polir la première partie avec les plus petits changements possibles avant l'envoi de la PR. État : terminé. Travail sur la branche existante `gus-rlin/koyori-etape1`, initialement propre au commit `4cb4393` ; modifications laissées dans l'arbre de travail pour inspection.
+
+### Réalisations
+
+Lecture du concept, du journal, des contrats et des chemins API, droits, persistance, workers, démonstration et vérification. Deux corrections dans `src/koyori/control/app.py` : les rejets précoces 413/422 passent par les en-têtes et la trace communs ; le gestionnaire HTTP conserve les en-têtes de Starlette, notamment `Allow` pour une réponse 405. Les recettes de `tests/test_control.py` vérifient aussi le JSON malformé, l'encodage invalide et l'absence de contenu métier dans les erreurs et logs. Contrat HTTP et preuves actualisés dans `docs/api.md` et `docs/verification`.
+
+### Choix et raisons
+
+Conserver le périmètre livré et limiter les retouches aux réponses d'erreur HTTP : en-têtes et trace communs pour les rejets précoces, conservation de l'en-tête `Allow` des réponses 405. Aucun ajout de dépendance ni refonte. La note de concept reste pertinente.
+
+### Difficultés et résolution
+
+Les réponses 413 pour un corps dépassant 32 KiB et 422 pour les arguments interdits sortaient du middleware avant ses en-têtes et son log communs. Le gestionnaire des erreurs HTTP perdait aussi l'en-tête `Allow` transmis par Starlette. Cinq cas ciblés reproduisent ces défauts avant correction, puis passent après correction ; impact limité au diagnostic HTTP et au contrat de méthode. La lecture du nom typographique du concept nécessite toujours le chemin découvert, comme en JRN-005. Ruff a normalisé les fins de ligne des deux fichiers Python après les patches ; le contrôle final passe. Aucun problème observé lors des constructions et de la recette Docker.
+
+### Ce qui a bien fonctionné
+
+La suite de référence passe sur les émulateurs existants ; renforcer les tests de frontière expose les écarts sans changer les règles métier. Les cinq cas ciblés échouent sur l'ancienne version et réussissent sur la correction. La vérification supplémentaire de l'API en conteneur confirme le comportement HTTP, avec un corps envoyé sans Content-Length pour le cas 413.
+
+### Vérifications
+
+- Référence avant modification : `KOYORI_INTEGRATION=1 uv run --no-sync pytest -q --junitxml=artifacts/polish-baseline-tests.xml` : 65 tests passés, aucune exclusion.
+- Cinq cas HTTP ciblés : échecs attendus sur les en-têtes manquants avant correction, puis cinq succès. Suite complète corrigée avec `--junitxml=artifacts/all-tests.xml` : **68 tests passés, aucune exclusion**. L'avertissement Starlette/httpx de JRN-007 demeure.
+- `ruff check src tests scripts infrastructure` et `ruff format --check src tests scripts infrastructure` : succès. Relecture du diff et contrôle d'espacement Git réalisés ; changements applicatifs limités au fichier API et à ses tests.
+- `docker compose build api`, puis `docker compose up -d --no-build` : image reconstruite et services recréés. `scripts/verify_local.py` : **PASS**, même tâche récupérée après interruption du worker et redémarrage. Trois requêtes HTTP sur l'API en conteneur confirment 413/422/405, en-têtes communs, requestId et Allow ; santé prête 200.
+- `scripts/build_lambda.py` et `python -m infrastructure.app` : bundle Linux et synthèse CDK reconstruits, codes de sortie 0. Les cinq tests de `tests/test_infrastructure.py` passent sur le nouveau template.
+- `scripts/record_evidence.py` : concordance des sources embarquées confirmée, nouvelles empreintes et résultats enregistrés dans [les preuves d'artefacts](docs/verification/artifact-evidence.json). L'audit des dépendances de JRN-007 est conservé : lock et dépendances inchangés ; aucun nouvel audit exécuté.
+- Pas de nouvelle revue par sous-agent ni de note attribuée aux retouches. Les documents distinguent explicitement la revue initiale à 9,3/10 de cette validation. Aucun contrôle AWS distant ou GitHub exécuté.
+- Contrôle documentaire final : treize fichiers Markdown lus en UTF-8, trente références locales résolues, identifiants JRN-001 à JRN-008 uniques et croissants, rapport JSON cohérent. Les cinq services runtime actifs utilisent l'image enregistrée dans les preuves.
+
+### Retour sur les outils
+
+`senior-code-basics`, PowerShell, Git, rg, uv, pytest, Ruff et apply_patch : inspection, reproduction et correction ciblées utiles, réutilisation souhaitée ; retours généraux inchangés depuis JRN-007. FastAPI/Starlette et httpx servent réellement les contrôles de réponses et de traces. Docker/Compose reconstruit l'image et valide de nouveau la récupération ; boto3 exerce DynamoDB Local et ElasticMQ via les tests dans des namespaces isolés. CDK synthétise le bundle actualisé sans compte. Aucun appel AWS, coût cloud ou publication effectué ; les services Docker locaux restent actifs.
+
+### Suite
+
+Aucune action restante pour ces retouches. Commit et envoi de la PR restent à l'utilisateur. La qualification AWS réelle, la voix, les modèles et les connecteurs conservent les limites de JRN-007 et du manifeste. La licence Apache 2.0 est inchangée ; aucune contribution Open Source complémentaire ni publication n'est revendiquée.

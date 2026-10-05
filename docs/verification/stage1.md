@@ -2,6 +2,10 @@
 
 **Livraison validée le 2026-10-05 : PASS, 9,3/10 en revue indépendante**, sans constat actionnable restant observé. 65 tests passés sans exclusion, recette Docker de reprise PASS, bundle Linux reconstruit, synthèse CDK et audit runtime réalisés. Les trois constats de la première revue à 8,1/10 sont levés. Le backend local et la préparation AWS constituent le périmètre validé ; les services AWS distants restent à qualifier.
 
+## Retouches avant PR — 2026-10-05
+
+Deux corrections ciblées des réponses d'erreur HTTP sont consignées dans JRN-008 : en-têtes et trace communs pour les rejets précoces `413/422`, et conservation d'`Allow` pour les `405`. **68 tests passent sans exclusion**, Ruff et format passent ; les trois réponses sont aussi vérifiées sur l'API en conteneur. Image et bundle Lambda reconstruits, recette Docker de reprise PASS, synthèse CDK et ses cinq tests réussis. Les [empreintes](artifact-evidence.json) correspondent à cette version ; l'audit des dépendances de la livraison initiale reste applicable au lock inchangé. La note **9,3/10** ci-dessus porte sur la revue initiale, qui n'a pas été rejouée pour ces retouches.
+
 ## Recettes et preuves
 
 | Exigence | Preuve executable |

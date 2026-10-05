@@ -434,22 +434,42 @@ def test_errors_and_logs_do_not_include_input_or_dependency_details(harness, mon
     assert error.headers["Cache-Control"] == "no-store"
 
 
-def test_http_body_is_bounded_without_content_length(harness):
+def test_http_body_is_bounded_without_content_length(harness, caplog):
+    caplog.set_level("INFO", logger="koyori.http")
     response = harness.client.post(
         "/v1/commands", content=iter([b"x" * 20000, b"x" * 20000]), headers=harness.headers()
     )
     assert response.status_code == 413
+    assert response.headers["X-Request-Id"] == response.json()["requestId"]
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.json()["requestId"] in caplog.text
 
 
-def test_control_operations_reject_hidden_arguments(harness):
+@pytest.mark.parametrize("content", [json.dumps({"owner": "robin", "mode": "live"}), "{", b"\xff"])
+def test_control_operations_reject_hidden_arguments(harness, content, caplog):
     tid = harness.command()
+    caplog.clear()
+    caplog.set_level("INFO", logger="koyori.http")
     response = harness.client.post(
         f"/v1/tasks/{tid}/cancel",
-        json={"owner": "robin", "mode": "live"},
+        content=content,
         headers=harness.headers(version=1),
     )
     assert response.status_code == 422
+    assert response.headers["X-Request-Id"] == response.json()["requestId"]
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.json()["requestId"] in caplog.text
+    assert "robin" not in response.text + caplog.text
     assert harness.task(tid)["status"] == "READY"
+
+
+def test_method_not_allowed_preserves_allow_header(harness):
+    response = harness.client.post("/health/live")
+    assert response.status_code == 405
+    assert "GET" in response.headers["Allow"].split(", ")
+    assert response.headers["Content-Type"] == "application/problem+json"
 
 
 def test_cursors_are_principal_household_and_route_bound(harness):
