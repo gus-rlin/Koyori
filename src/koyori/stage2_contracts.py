@@ -72,7 +72,9 @@ class ContextQuery(Write):
         if value and value != "yesterday":
             from datetime import date
 
-            date.fromisoformat(value)
+            parsed = date.fromisoformat(value)
+            if not date.min < parsed < date.max:
+                raise ValueError("Context day must have representable timezone boundaries")
         return value
 
 

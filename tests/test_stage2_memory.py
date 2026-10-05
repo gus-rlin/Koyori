@@ -14,6 +14,49 @@ from koyori.stage2_contracts import MemoryPatch, MemoryWrite
 from koyori.store import put, revised
 
 
+def test_disabled_semantic_worker_drains_intents_and_preserves_newer_mutations(harness):
+    h = harness
+    service = Semantic(h.domain)
+    service.mode = "disabled"
+    items = [memory(h) for _ in range(25)]
+    stale = h.domain.store.get("Delivery", (f"MEMINDEX#{items[0]['id']}", "META"))
+    assert (
+        h.client.patch(
+            f"/v1/memories/{items[0]['id']}",
+            json={"text": "Correction"},
+            headers=h.headers(version=1),
+        ).status_code
+        == 200
+    )
+    service.project(stale)
+    latest = h.domain.store.get("Delivery", (stale["PK"], stale["SK"]))
+    assert latest["status"] == "PENDING" and latest["memoryRev"] == 2
+    assert (
+        h.client.delete(f"/v1/memories/{items[1]['id']}", headers=h.headers(version=1)).status_code
+        == 200
+    )
+    assert service.sweep() > 0
+    service.sweep()
+    assert service.sweep() == 0
+    assert not service.pending("MEMINDEX") and not service.pending("MEMERASE")
+    for item in items:
+        intent = h.domain.store.get("Delivery", (f"MEMINDEX#{item['id']}", "META"))
+        assert intent["status"] == "DONE" and "GSI1PK" not in intent and "GSI1SK" not in intent
+    assert not any(pk.startswith(("VECTOR#", "EMBEDUSE#")) for _, (pk, _) in h.domain.store.rows)
+
+
+@pytest.mark.parametrize("day", ["9999-12-31", "0001-01-01"])
+def test_context_rejects_unrepresentable_day_boundaries(harness, day):
+    response = harness.client.post("/v1/context", json={"day": day}, headers=harness.headers())
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.parametrize("day", ["9999-12-30", "0001-01-02"])
+def test_context_accepts_neighboring_representable_day_boundaries(harness, day):
+    response = harness.client.post("/v1/context", json={"day": day}, headers=harness.headers())
+    assert response.status_code == 200, response.text
+
+
 def test_text_patch_preserves_sharing_expiry_and_procedure_steps(harness):
     h = harness
     body = MemoryWrite(

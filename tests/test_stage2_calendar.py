@@ -1,6 +1,8 @@
 import json
 import logging
 from dataclasses import replace
+from datetime import UTC, datetime
+from email.utils import format_datetime
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -10,6 +12,7 @@ from cryptography.exceptions import InvalidTag
 from koyori.calendar import SCOPES, Calendar, Envelope, Google
 from koyori.domain import hkey
 from koyori.errors import Conflict, Problem
+from koyori.security import digest
 from koyori.stage2_contracts import CalendarAuthorize
 from koyori.store import put, revised
 
@@ -66,9 +69,9 @@ class FakeGoogle:
             raise page
         return page
 
-    def watch(self, token, calendar, channel, secret):
+    def watch(self, token, calendar, channel, secret, *, expires_at):
         self.watches.append((channel, secret))
-        return {"resourceId": "resource-one", "expiration": str((self.clock() + 7200) * 1000)}
+        return {"resourceId": "resource-one", "expiration": str(expires_at * 1000)}
 
     def revoke(self, token):
         assert token == "private-refresh"
@@ -110,6 +113,297 @@ def connect(h, service):
     )
     assert callback.status_code == 200, callback.text
     return callback.json(), state
+
+
+@pytest.mark.parametrize("loss", ["expiry", "revocation", "profile", "epoch"])
+def test_owner_authority_loss_revokes_credentials_durably_after_restart(calendar, loss):
+    h, service = calendar
+    connection, _ = connect(h, service)
+    key = (hkey(h.h), f"CONNECTION#{connection['id']}")
+    member = h.domain.store.get("Domain", (hkey(h.h), "MEMBER#alex"))
+    if loss == "profile":
+        old = h.domain.store.get("Domain", ("P#alex", "PROFILE"))
+        lost = revised(old, active=False)
+    else:
+        old = member
+        change = (
+            {"expiresAt": h.clock()}
+            if loss == "expiry"
+            else (
+                {"active": False}
+                if loss == "revocation"
+                else {"accessEpoch": member["accessEpoch"] + 1}
+            )
+        )
+        lost = revised(old, **change)
+    h.domain.store.transact([put("Domain", lost, old)])
+    service.sweep()
+    disabled = h.domain.store.get("Domain", key)
+    assert not disabled["active"] and disabled["revokePending"]
+    assert (
+        h.client.get(f"/v1/connections/{connection['id']}", headers=h.headers("sam")).status_code
+        == 404
+    )
+
+    def outage(token):
+        raise Problem(503, "PROVIDER_UNAVAILABLE", "fixture outage", True)
+
+    revoke = service.google.revoke
+    service.google.revoke = outage
+    restarted = Calendar(h.domain, google=service.google, envelope=service.envelope)
+    restarted.sweep()
+    intent = h.domain.store.get("Delivery", (f"CALRUN#{connection['id']}", "META"))
+    assert intent["status"] == "PENDING" and intent["dueAt"] > h.clock()
+    # Regaining household access cannot resurrect the revoked connection.
+    h.domain.store.transact([put("Domain", {**old, "rev": lost["rev"] + 1}, lost)])
+    h.clock.advance(31)
+    service.google.revoke = revoke
+    restarted.sweep()
+    finished = h.domain.store.get("Domain", key)
+    assert not finished["active"] and not finished["revokePending"]
+    assert service.google.revoked
+    assert h.domain.store.get("Connections", service.token_key(finished))["envelope"] is None
+    assert restarted.sweep() == 0
+
+
+def test_watch_admission_precedes_provider_and_accepts_initial_notification(calendar):
+    h, service = calendar
+    connection, _ = connect(h, service)
+    watch = service.google.watch
+
+    def initial_notification(token, calendar_id, channel, secret, **kwargs):
+        locator = h.domain.store.get("Connections", (f"CHANNEL#{channel}", "META"))
+        assert locator is not None
+        admission = h.domain.store.get("Connections", (locator["watchPK"], locator["watchSK"]))
+        assert admission["status"] == "PENDING" and admission["tokenHash"] == digest(
+            {"token": secret}
+        )
+        assert secret not in json.dumps(list(h.domain.store.rows.values()))
+        assert service.register_watch(h.domain.context("alex", h.h), connection["id"]) == 0
+        service.webhook(
+            {
+                "x-goog-channel-id": channel,
+                "x-goog-channel-token": secret,
+                "x-goog-resource-id": "resource-one",
+                "x-goog-message-number": "1",
+            }
+        )
+        return watch(token, calendar_id, channel, secret, **kwargs)
+
+    service.google.watch = initial_notification
+    assert service.register_watch(h.domain.context("alex", h.h), connection["id"]) == 1
+    admission = h.domain.store.get(
+        "Connections",
+        (f"WATCH#{connection['id']}", digest({"calendar": "calendar@example.invalid"})),
+    )
+    assert admission["status"] == "ACTIVE" and admission["lastMessage"] == 1
+
+
+@pytest.mark.parametrize("reply", ["normal", "lost", "late"])
+def test_short_provider_watch_lifetime_survives_restart_without_renewal_loop(calendar, reply):
+    h, service = calendar
+    connection, _ = connect(h, service)
+    admitted_at = h.clock()
+    expiry = admitted_at + 1800
+    watch = service.google.watch
+
+    class WorkerKilled(BaseException):
+        pass
+
+    def short_watch(token, calendar_id, channel, secret, **kwargs):
+        result = watch(token, calendar_id, channel, secret, **kwargs)
+        if reply != "normal":
+            service.webhook(
+                {
+                    "x-goog-channel-id": channel,
+                    "x-goog-channel-token": secret,
+                    "x-goog-resource-id": "resource-one",
+                    "x-goog-message-number": "1",
+                    "x-goog-channel-expiration": format_datetime(
+                        datetime.fromtimestamp(expiry, UTC), usegmt=True
+                    ),
+                }
+            )
+        if reply == "lost":
+            raise WorkerKilled()
+        return result if reply == "late" else {**result, "expiration": str(expiry * 1000)}
+
+    service.google.watch = short_watch
+    if reply == "lost":
+        with pytest.raises(WorkerKilled):
+            service.register_watch(h.domain.context("alex", h.h), connection["id"])
+    else:
+        assert service.register_watch(h.domain.context("alex", h.h), connection["id"]) == 1
+    restarted = Calendar(h.domain, google=service.google, envelope=service.envelope)
+    service.google.watch = watch
+    key = (f"WATCH#{connection['id']}", digest({"calendar": "calendar@example.invalid"}))
+    admission = h.domain.store.get("Connections", key)
+    assert admission["expiresAt"] == expiry
+    assert admission["renewAfter"] == admitted_at + 900
+    for _ in range(3):
+        h.clock.advance(60)
+        assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 0
+    channel, secret = service.google.watches[0]
+    restarted.webhook(
+        {
+            "x-goog-channel-id": channel,
+            "x-goog-channel-token": secret,
+            "x-goog-resource-id": "resource-one",
+            "x-goog-message-number": "2",
+            "x-goog-channel-expiration": format_datetime(
+                datetime.fromtimestamp(expiry + 7200, UTC), usegmt=True
+            ),
+        }
+    )
+    assert h.domain.store.get("Connections", key)["expiresAt"] == expiry
+    assert h.domain.store.get("Connections", key)["renewAfter"] == admitted_at + 900
+    h.clock.value = expiry + 1 if reply == "lost" else admitted_at + 900
+    assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 1
+    assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 0
+    assert len(service.google.watches) == 2
+
+
+@pytest.mark.parametrize("notification", [False, True])
+def test_lost_watch_response_keeps_stable_admission_without_duplicate_creation(
+    calendar, notification
+):
+    h, service = calendar
+    connection, _ = connect(h, service)
+    watch = service.google.watch
+
+    class WorkerKilled(BaseException):
+        pass
+
+    def lost_reply(*args, **kwargs):
+        watch(*args, **kwargs)
+        raise WorkerKilled()
+
+    service.google.watch = lost_reply
+    with pytest.raises(WorkerKilled):
+        service.register_watch(h.domain.context("alex", h.h), connection["id"])
+    restarted = Calendar(h.domain, google=service.google, envelope=service.envelope)
+    service.google.watch = watch
+    assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 0
+    assert len(service.google.watches) == 1
+    channel, secret = service.google.watches[0]
+    key = (f"WATCH#{connection['id']}", digest({"calendar": "calendar@example.invalid"}))
+    admission = h.domain.store.get("Connections", key)
+    if notification:
+        restarted.webhook(
+            {
+                "x-goog-channel-id": channel,
+                "x-goog-channel-token": secret,
+                "x-goog-resource-id": "resource-one",
+                "x-goog-message-number": "1",
+            }
+        )
+        assert h.domain.store.get("Connections", key)["status"] == "ACTIVE"
+    else:
+        h.clock.value = admission["expiresAt"] - 1
+        assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 0
+        h.clock.advance(1)
+        assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 1
+        assert len(service.google.watches) == 2
+
+
+@pytest.mark.parametrize("conflicts", [1, 6])
+def test_watch_finalization_conflicts_do_not_create_another_provider_channel(calendar, conflicts):
+    h, service = calendar
+    connection, _ = connect(h, service)
+    transact, attempts = h.domain.store.transact, []
+
+    def race(changes):
+        if any(
+            c.item and c.key[0].startswith("WATCH#") and c.item.get("status") == "ACTIVE"
+            for c in changes
+        ):
+            attempts.append(True)
+            if len(attempts) <= conflicts:
+                raise Conflict("fixture admission race")
+        return transact(changes)
+
+    h.domain.store.transact = race
+    if conflicts == 6:
+        with pytest.raises(Conflict):
+            service.register_watch(h.domain.context("alex", h.h), connection["id"])
+    else:
+        assert service.register_watch(h.domain.context("alex", h.h), connection["id"]) == 1
+    h.domain.store.transact = transact
+    restarted = Calendar(h.domain, google=service.google, envelope=service.envelope)
+    assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 0
+    assert len(service.google.watches) == 1
+
+
+def test_owner_authority_cleanup_loses_to_concurrent_restoration(calendar):
+    h, service = calendar
+    connection, _ = connect(h, service)
+    member = h.domain.store.get("Domain", (hkey(h.h), "MEMBER#alex"))
+    lost = revised(member, active=False)
+    h.domain.store.transact([put("Domain", lost, member)])
+    transact = h.domain.store.transact
+
+    def restore(changes):
+        transact([put("Domain", revised(lost, active=True), lost)])
+        return transact(changes)
+
+    h.domain.store.transact = restore
+    service.sweep()
+    h.domain.store.transact = transact
+    current = service.get(h.domain.context("alex", h.h), connection["id"])
+    assert current["active"] and not current["revokePending"] and not service.google.revoked
+    service.sweep()
+    assert service.get(h.domain.context("alex", h.h), connection["id"])["active"]
+
+
+def test_google_watch_requests_explicit_bounded_expiration(harness):
+    seen = []
+    expires = harness.clock() + 7200
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(
+            200, json={"resourceId": "resource-one", "expiration": str(expires * 1000)}
+        )
+
+    google = Google(
+        replace(harness.settings, google_webhook_url="https://example.invalid/hook"),
+        httpx.MockTransport(handler),
+    )
+    google.watch(
+        "fixture-access",
+        "calendar@example.invalid",
+        "fixture-channel",
+        "fixture-secret",
+        expires_at=expires,
+    )
+    body = json.loads(seen[0].content)
+    assert body["expiration"] == str(expires * 1000) and body["params"] == {"ttl": "7200"}
+
+
+def test_watch_reply_after_revocation_preserves_admission_without_reviving_connection(calendar):
+    h, service = calendar
+    connection, _ = connect(h, service)
+    ctx = h.domain.context("alex", h.h)
+    watch = service.google.watch
+
+    def revoke_during_watch(*args, **kwargs):
+        current = service.get(ctx, connection["id"])
+        _, writes, _ = service.revoke(ctx, current["id"], current["rev"])
+        h.domain.store.transact(ctx.guards() + writes)
+        return watch(*args, **kwargs)
+
+    service.google.watch = revoke_during_watch
+    assert service.register_watch(ctx, connection["id"]) == 1
+    current = service.get(ctx, connection["id"], inactive=True)
+    assert not current["active"] and current["revokePending"]
+    admission = h.domain.store.get(
+        "Connections",
+        (f"WATCH#{connection['id']}", digest({"calendar": "calendar@example.invalid"})),
+    )
+    assert admission["status"] == "ACTIVE" and admission["resourceId"] == "resource-one"
+    service.sweep()
+    assert not service.get(ctx, connection["id"], inactive=True)["active"]
+    assert h.domain.store.get("Connections", service.token_key(current))["envelope"] is None
 
 
 def test_oauth_is_single_use_scoped_and_credentials_are_encrypted(calendar):

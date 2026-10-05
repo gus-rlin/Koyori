@@ -147,6 +147,17 @@ class Semantic(Service):
         if not memory:
             return
         if self.mode == "disabled":
+            latest = self.store.get("Delivery", (intent["PK"], intent["SK"]))
+            if latest["rev"] == intent["rev"] and latest["memoryRev"] == memory["rev"]:
+                try:
+                    self.store.transact(
+                        [
+                            guard("Domain", memory),
+                            put("Delivery", self.domain.done_intent(latest), latest),
+                        ]
+                    )
+                except Conflict:
+                    pass  # A newer mutation owns its own intent.
             return
         removed = (
             memory["deleted"]

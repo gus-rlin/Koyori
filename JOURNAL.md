@@ -539,6 +539,17 @@ Les tests ciblés vérifient les défauts avant modification et réutilisent le 
 
 Consulter la CI et les nouveaux retours de la PR avant fusion. La libération des quotas de tâches en pause intervient au contrôle périodique des droits ; le retrait des adhésions expirées est réalisé à l'admission suivante. Le socle n'étant pas déployé sur AWS, aucun rattrapage de données de production n'est requis. Les limites de qualification AWS et de contribution complémentaire Open Source demeurent.
 
+## JRN-012 — 2026-10-05 — Estimation qualitative du chantier le plus long
+
+- **Objectif et état** : terminé ; identifier le chantier probablement le plus long à coder, sans établir de calendrier chiffré.
+- **Réalisations** : lecture de la note de concept, du plan en quatre étapes et des dernières entrées du journal. Estimation : étape 3, orchestration autonome persistante, pour la combinaison planification, reprise, replanification, échéances et apprentissage. L'étape 2 constitue un autre chantier lourd par la mémoire et la fiabilité des connecteurs.
+- **Choix et raisons** : estimation qualitative fondée sur les dépendances et cas de panne décrits ; aucune durée mesurée ni décision de changement de périmètre. Le socle dispose de validations locales consignées en JRN-011 ; sa qualification AWS reste à faire. L'accès effectif à Alexa peut influer sur le calendrier indépendamment du volume de code.
+- **Difficultés et résolution** : aucun problème observé dans l'analyse documentaire ; absence de mesures de durée par chantier, donc classement provisoire.
+- **Ce qui a bien fonctionné** : le découpage par contrats et preuves de fin permet de distinguer volume de développement, validation et dépendances externes.
+- **Vérifications** : cohérence relue avec les étapes 2 à 4 du plan et JRN-011 ; aucune inspection de code ni exécution de tests, non nécessaires à cette estimation.
+- **Retour sur les outils** : PowerShell, rg et apply_patch utilisés pour consulter les documents et enregistrer l'estimation ; aucune API externe utilisée.
+- **Suite** : affiner les estimations au démarrage de chaque étape à partir d'un périmètre et de critères de fin concrets.
+
 ## JRN-013 — 2026-10-05 — Seconde partie : mémoire et connecteurs contrôlés
 
 - **Objectif et état** : terminé le 2026-10-06 ; étape 2 implémentée seule par l'agent principal, puis revue indépendante finale **9,3/10**, au-dessus du seuil demandé. Cette livraison est du code validé localement et de la préparation AWS ; les fournisseurs distants restent à qualifier.
@@ -586,6 +597,17 @@ La reconstruction Linux rencontre ensuite `CERTIFICATE_VERIFY_FAILED`/`UnknownIs
 
 Validation finale : `KOYORI_INTEGRATION=1 uv run --no-sync pytest -q --junitxml=artifacts/all-tests.xml` : **135 réussites, zéro échec/erreur/exclusion**. Ruff, format et `git diff --check` réussissent ; image, bundle Linux et CDK régénérés. `scripts/verify_local.py` et `scripts/verify_stage2.py` : **PASS** sur les nouveaux artefacts. `pip-audit` : aucune vulnérabilité connue. `scripts/record_evidence.py` vérifie les sources du bundle et enregistre l'empreinte `1adbd296685194580166ad3569a31f95b28eb4b88903dba4365e8ee7e339ae86`. Avertissement Starlette/httpx préexistant inchangé. La note finale indépendante est **PASS, 9,3/10**, aucun constat confirmé ouvert : 116 tests hors intégration et 6 contrôles CDK rejoués par le reviewer, JUnit complet et nouvelles preuves relus. [Rapport complet](docs/verification/stage2-review.md). Le seuil demandé est atteint dans la portée code/local/préparation AWS, sans prétendre à une qualification distante.
 
+## JRN-014 — 2026-10-05 — Conservation du rappel Devpost sur la candidature
+
+- **Objectif et état** : terminé ; conserver dans un fichier Markdown l'e-mail fourni par l'utilisateur sur les retours produit et les conseils de soumission Build, Ship, Shape.
+- **Réalisations** : création de [docs/hackathon-devpost-feedback-reminder.md](docs/hackathon-devpost-feedback-reminder.md), avec le texte anglais, l'échéance citée et des références aux documents du projet. Aucun élément simulé.
+- **Choix et raisons** : conserver le contenu utile et sa langue d'origine ; retirer les tableaux vides, le logo et les liens de suivi du courriel. Distinguer la date d'archivage de la date d'envoi non fournie. Aucun changement de stratégie ou de périmètre produit.
+- **Difficultés et résolution** : une première commande de lecture groupée échoue sans diagnostic ; les lectures séparées permettent de consulter les documents. Aucun blocage restant.
+- **Ce qui a bien fonctionné** : le contenu fourni suffit à constituer l'archive sans dépendre des liens de suivi ni d'images distantes.
+- **Vérifications** : relecture du fichier créé et comparaison avec le texte fourni ; contrôle des références locales. Aucun test de code nécessaire. Conditions du concours non revérifiées en ligne pour cette simple transcription.
+- **Retour sur les outils** : PowerShell et rg pour la consultation, apply_patch pour l'écriture documentaire ; aucun outil, API ou SDK du concours utilisé dans cette tâche.
+- **Suite** : utiliser ce rappel lors de la préparation du dossier et poursuivre les retours factuels dans le journal. L'entrée JRN-013 reste en cours indépendamment de cet archivage.
+
 ## JRN-015 — 2026-10-06 — Publication de l'étape 2 et ouverture de la PR
 
 - **Objectif et état** : terminé pour le push et l'ouverture de la PR de l'étape 2, sur demande explicite de l'utilisateur ; contrôles GitHub en cours. Cette demande reprend la publication laissée ouverte à la fin de JRN-013.
@@ -629,3 +651,22 @@ Commit `ecf9669` (`fix: preserve memory patches and repair expiration lifecycle`
 GitHub CLI 2.88.0 : `gh pr edit --body-file` échoue car son chemin GraphQL exige `read:project`, bien que seule la description soit modifiée. Impact limité à la mise à jour de la description ; aucun blocage du push. Contournement réussi avec `gh api --method PATCH repos/gus-rlin/Koyori/pulls/2 --input` et fichier JSON local ignoré, sans demander de nouveaux scopes ni afficher de jeton. Friction déjà rencontrée en JRN-010 ; suggestion : ne pas exiger la lecture des projets pour modifier seulement une description.
 
 Vérification après commit : les 59 blobs de `HEAD` produisent l'empreinte publiée exacte. Runs GitHub push `37384010450` et pull_request `37384015358` démarrés pour `ecf9669`, encore en cours au contrôle. Le job pull_request a déjà réussi le nouveau `--check-source` sur Linux, Ruff, format et le build Docker ; build Lambda en cours. La suite distante complète n'est pas déclarée réussie. Un commit documentaire complémentaire conserve ce résultat réel de publication.
+
+## JRN-017 — 2026-10-06 — Seconde série de corrections de la PR #2
+
+- **Objectif et état** : en cours ; corriger les quatre nouveaux constats transmis sur `f823a82`, puis vérifier, faire relire, committer et mettre à jour la PR #2.
+- **Réalisations** : le worker sémantique désactivé termine les intentions sans vecteur ni embedding, sous garde de la révision canonique ; les dates de contexte sans bornes civiles représentables sont refusées en 422 ; les partitions UTC utilisent une arithmétique indépendante de la plage timestamp du système. La perte d'appartenance, de profil personnel ou de génération d'accès déclenche une révocation durable du connecteur, puis révocation Google et effacement chiffré du jeton. Les admissions WATCH/CHANNEL sont écrites avant le fournisseur et récupérables après interruption ou notification initiale.
+- **Choix et raisons** : conserver les primitives de transaction, la boucle CALRUN et l'enveloppe existantes. L'autorité perdue est un état terminal du compte connecté, distinct d'une panne temporaire de Google ; sa restauration concurrente invalide la décision de révocation sous gardes. Un watch utilise une seule tentative avec identité préadmise et expiration explicite à deux heures ; une réponse perdue attend une notification authentifiée ou cette expiration avant nouvelle création. Le polling continue pendant l'incertitude. Aucun retry aveugle du watch ni nouvelle dépendance.
+- **Difficultés et résolution** : les régressions initiales produisent 12 échecs et 35 réussites. Sur ce poste, les dates voisines pourtant représentables produisaient aussi `OSError` via `datetime.fromtimestamp` ; calcul des dates UTC par ajout à l'époque, sans fonction C du système. Le commentaire ancien annonçait à tort que l'admission précédait l'appel Google ; l'ordre réel et le commentaire sont maintenant corrigés. Les résultats fournisseur restent des doubles et transports interceptés.
+- **Ce qui a bien fonctionné** : régressions avant modification, tests de réponse watch perdue et de notification arrivant avant la réponse, tests des deux issues d'un conflit de finalisation ; réutilisation des gardes d'autorité pour éviter une révocation basée sur une lecture dépassée. Les 47 premiers tests ciblés passent ; contrôles supplémentaires de concurrence et DynamoDB Local en cours.
+- **Vérifications** : mémoire/calendrier avant correction : 12 échecs, 35 réussites ; après correction : 47 réussites. Ruff et format passent. Les deux CI de `f823a82` sont maintenant réussies (push `37384141943`, pull_request `37384148492`). Suite complète, artefacts, recettes et revue de ce nouveau diff encore à exécuter.
+- **Retour sur les outils** : `senior-code-basics`, PowerShell, rg, Git, apply_patch, uv, pytest, Ruff ; HTTPX MockTransport et FakeGoogle vérifient les contrats sans appel Google réel. Documentation officielle consultée le 2026-10-06 : [push et notification initiale](https://developers.google.com/workspace/calendar/api/guides/push), [events.watch et TTL](https://developers.google.com/workspace/calendar/api/v3/reference/events/watch), [channels.stop](https://developers.google.com/workspace/calendar/api/v3/reference/channels/stop). L'identité stable ne fournit pas une garantie d'idempotence de création ; sans resource ID connu, l'arrêt n'est pas disponible, d'où l'expiration bornée. Réutilisation des outils justifiée par les régressions observables.
+- **Suite** : terminer les vérifications avec les nouveaux artefacts et la revue indépendante, publier sur la branche existante. Google/Titan/S3 Vectors et IAM réels restent non qualifiés. Préserver les travaux voisins JRN-012/JRN-014 et le rappel Devpost.
+
+### Point de contrôle — durée effective du canal
+
+La première suite complète passe avec **168 tests**, dont 16 intégrations DynamoDB Local. La revue indépendante confirme un P2 complémentaire : Google peut limiter la durée du canal à moins de deux heures ; le seuil fixe d'une heure recréait alors des canaux à chaque passage, et la notification initiale ne récupérait pas son expiration effective. Trois régressions échouent avant correction (réponse normale, perdue, tardive). L'admission conserve maintenant son instant de création et un `renewAfter` calculé selon la durée effective ; les échéances de réponse et notification sont cumulées par minimum, sans prolongation ni glissement du seuil. Les **55 tests mémoire/calendrier** passent ensuite, Ruff et format également. La première recette socle est PASS, mais les artefacts et preuves seront reconstruits après ce dernier changement avant publication.
+
+### Reprise pour intégration des étapes 2 et 3
+
+La demande du 2026-10-06 autorise la réunion et le push des deux branches. Les corrections locales de cette entrée sont conservées dans un commit dédié avant fusion ; leur validation cumulative et publication seront consignées dans l'entrée d'intégration à la fin du journal. La PR #2 est déjà fusionnée dans `main` au contrôle GitHub. Les résultats précédents restent historiques et ne prouvent pas encore le comportement du code réuni.

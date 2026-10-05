@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import secrets
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -21,12 +22,20 @@ from koyori.domain import active, hkey, projection, row, uid
 from koyori.errors import Conflict, Problem, missing
 from koyori.security import digest
 from koyori.stage2 import Service
-from koyori.store import guard, put, revised
+from koyori.store import Change, guard, put, revised
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.events.readonly",
     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ]
+WATCH_TTL = 7200
+
+
+def watch_deadlines(watch, expires_at):
+    expires_at = min(watch["expiresAt"], expires_at)
+    admitted_at = watch.get("admittedAt", watch["expiresAt"] - WATCH_TTL)
+    lead = min(3600, max(0, (expires_at - admitted_at) // 2))
+    return {"admittedAt": admitted_at, "expiresAt": expires_at, "renewAfter": expires_at - lead}
 
 
 class Envelope:
@@ -224,7 +233,7 @@ class Google:
             params=params,
         )
 
-    def watch(self, token, calendar, channel, secret):
+    def watch(self, token, calendar, channel, secret, *, expires_at):
         return self.request(
             "POST",
             f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar, safe='')}/events/watch",
@@ -234,6 +243,8 @@ class Google:
                 "type": "web_hook",
                 "address": self.settings.google_webhook_url,
                 "token": secret,
+                "expiration": str(expires_at * 1000),
+                "params": {"ttl": str(WATCH_TTL)},
             },
         )
 
@@ -632,19 +643,28 @@ class Calendar(Service):
         for calendar_id in connection["calendarIds"]:
             key = (f"WATCH#{cid}", digest({"calendar": calendar_id}))
             old = self.store.get("Connections", key)
-            if old and old["expiresAt"] > self.domain.now() + 3600:
-                continue
+            if old:
+                deadline = (
+                    old["expiresAt"]
+                    if old.get("status") == "PENDING"
+                    else old.get("renewAfter", old["expiresAt"] - 3600)
+                )
+                if deadline > self.domain.now():
+                    continue
             channel, secret = uid(), secrets.token_urlsafe(32)
-            # Admission record precedes the request; Google's initial sync may arrive
-            # before watch returns. It is safe to ignore that hint: polling also repairs.
-            result = self.google.watch(token, calendar_id, channel, secret)
+            # Persist the admission before the non-idempotent provider effect. If its
+            # response is lost, an authenticated hint can recover it; otherwise wait for expiry.
+            admitted_at = self.domain.now()
             item = row(
                 *key,
                 rev=old["rev"] + 1 if old else 1,
                 channelId=channel,
                 tokenHash=digest({"token": secret}),
-                resourceId=result["resourceId"],
-                expiresAt=int(result["expiration"]) // 1000,
+                resourceId=None,
+                admittedAt=admitted_at,
+                expiresAt=admitted_at + WATCH_TTL,
+                renewAfter=admitted_at + WATCH_TTL // 2,
+                status="PENDING",
                 connectionId=cid,
                 h=ctx.h,
                 owner=ctx.actor,
@@ -659,6 +679,30 @@ class Calendar(Service):
                     put("Connections", row(*channel_key, watchPK=key[0], watchSK=key[1])),
                 ]
             )
+            result = self.google.watch(
+                token, calendar_id, channel, secret, expires_at=item["expiresAt"]
+            )
+            for _ in range(6):
+                latest = self.store.get("Connections", key)
+                if latest["channelId"] != channel:
+                    break  # The admitted channel already expired and was replaced.
+                if latest["resourceId"] and latest["resourceId"] != result["resourceId"]:
+                    raise Problem(502, "INVALID_WATCH_RESPONSE", "Google channel identity changed.")
+                completed = revised(
+                    latest,
+                    status="ACTIVE",
+                    resourceId=result["resourceId"],
+                    **watch_deadlines(latest, int(result["expiration"]) // 1000),
+                )
+                try:
+                    # Only admission metadata is finalized, including after revocation;
+                    # it cannot reactivate the connection or overwrite a newer hint.
+                    self.store.transact([put("Connections", completed, latest)])
+                    break
+                except Conflict:
+                    continue
+            else:
+                raise Conflict("Concurrent channel admission finalization")
             count += 1
         return count
 
@@ -674,7 +718,9 @@ class Calendar(Service):
             or not secrets.compare_digest(
                 watch["tokenHash"], digest({"token": headers.get("x-goog-channel-token", "")})
             )
-            or watch["resourceId"] != headers.get("x-goog-resource-id")
+            or not headers.get("x-goog-resource-id")
+            or watch["resourceId"]
+            and watch["resourceId"] != headers.get("x-goog-resource-id")
         ):
             raise Problem(403, "WEBHOOK_INVALID", "Calendar notification identity is invalid.")
         try:
@@ -683,6 +729,15 @@ class Calendar(Service):
             raise Problem(422, "WEBHOOK_INVALID", "Calendar message number is invalid.") from None
         if sequence <= watch["lastMessage"]:
             return
+        expires_at = watch["expiresAt"]
+        if headers.get("x-goog-channel-expiration"):
+            try:
+                expiry = parsedate_to_datetime(headers["x-goog-channel-expiration"])
+                if expiry.tzinfo is None:
+                    raise ValueError("Missing expiration timezone")
+                expires_at = int(expiry.timestamp())
+            except (ValueError, TypeError, OverflowError, OSError):
+                raise Problem(422, "WEBHOOK_INVALID", "Calendar expiration is invalid.") from None
         connection = self.store.get(
             "Domain", (hkey(watch["h"]), f"CONNECTION#{watch['connectionId']}")
         )
@@ -692,7 +747,17 @@ class Calendar(Service):
         self.store.transact(
             [
                 guard("Domain", connection),
-                put("Connections", revised(watch, lastMessage=sequence), watch),
+                put(
+                    "Connections",
+                    revised(
+                        watch,
+                        lastMessage=sequence,
+                        status="ACTIVE",
+                        resourceId=headers["x-goog-resource-id"],
+                        **watch_deadlines(watch, expires_at),
+                    ),
+                    watch,
+                ),
                 put("Delivery", self.intent(connection, intent), intent),
             ]
         )
@@ -745,6 +810,8 @@ class Calendar(Service):
                 ]
             )
             return
+        if self.revoke_lost_authority(connection, intent):
+            return
         if not active(connection, self.domain.now()):
             self.store.transact(
                 [
@@ -761,3 +828,37 @@ class Calendar(Service):
             self.store.transact(
                 [put("Delivery", self.intent(connection, current, self.domain.now() + 60), current)]
             )
+
+    def revoke_lost_authority(self, connection, intent):
+        keys = [
+            (hkey(intent["h"]), "META"),
+            (hkey(intent["h"]), f"MEMBER#{connection['owner']}"),
+            (f"P#{connection['owner']}", "PROFILE"),
+        ]
+        snapshots = [self.store.get("Domain", key) for key in keys]
+        household, member, profile = snapshots
+        if (
+            household
+            and active(member, self.domain.now())
+            and active(profile, self.domain.now())
+            and profile["kind"] == "personal"
+            and member.get("accessEpoch", 1) == connection["memberEpoch"]
+        ):
+            return False
+        revoked = revised(
+            connection, active=False, epoch=connection["epoch"] + 1, revokePending=True
+        )
+        # Cleanup is system work. Lost owner authority must not prevent revoking its
+        # credential, but a concurrent restoration must invalidate this decision.
+        checks = [
+            Change("Domain", key, value["rev"] if value else None)
+            for key, value in zip(keys, snapshots, strict=True)
+        ]
+        self.store.transact(
+            checks
+            + [
+                put("Domain", revoked, connection),
+                put("Delivery", self.intent(revoked, intent), intent),
+            ]
+        )
+        return True
