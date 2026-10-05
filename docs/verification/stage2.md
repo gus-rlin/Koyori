@@ -1,5 +1,7 @@
 # Vérification de l'étape 2
 
+**Intégration des étapes 2 et 3 (2026-10-06)** : la validation du code réuni et des corrections supplémentaires est consignée dans [JRN-019](../../JOURNAL.md) et [artifact-evidence.json](artifact-evidence.json), renouvelé après les contrôles cumulatifs. Les 149 tests et les revues décrits ci-dessous sont les résultats historiques de la branche `f823a82` ; leurs scores ne sont pas attribués automatiquement à la fusion.
+
 Code de mémoire et connecteurs contrôlés, vérifié le **2026-10-06**. **149 tests réussis, aucune exclusion**, dont 14 intégrations DynamoDB Local ; Ruff, format et contrôle du diff réussis. Image Linux, bundle Lambda et template CDK reconstruits après les corrections de la PR #2 ; les deux nouvelles recettes Docker produisent **PASS**. Audit runtime : aucune vulnérabilité connue. [Revue indépendante : 9,4/10](stage2-review.md), aucun constat confirmé restant. [Empreintes et résultats](artifact-evidence.json).
 
 | Garantie | Preuve |

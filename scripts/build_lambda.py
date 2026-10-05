@@ -1,11 +1,17 @@
 """Build a clean Linux Lambda bundle from the locked runtime dependencies."""
 
+import argparse
 import os
 import subprocess
 from pathlib import Path
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--runtime-image", help="Use uv from an already built locked Linux runtime image"
+    )
+    options = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     artifacts = root / "artifacts"
     artifacts.mkdir(exist_ok=True)
@@ -20,6 +26,8 @@ def main():
             f"type=bind,source={ca_path},target=/trusted-ca.pem,readonly",
             "--env",
             "PIP_CERT=/trusted-ca.pem",
+            "--env",
+            "SSL_CERT_FILE=/trusted-ca.pem",
         ]
     subprocess.run(
         [
@@ -52,8 +60,11 @@ def main():
             "--mount",
             f"type=bind,source={root / 'scripts' / 'lambda_build_inside.py'},target=/build.py,readonly",
             *ca_options,
-            "python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b",
+            *(["--env", "KOYORI_BUILD_WITH_UV=1"] if options.runtime_image else []),
+            "--entrypoint",
             "python",
+            options.runtime_image
+            or "python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b",
             "/build.py",
         ],
         check=True,

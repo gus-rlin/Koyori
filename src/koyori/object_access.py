@@ -12,6 +12,14 @@ def event_access(domain, ctx, kind, identifier):
         item = Actions(domain).get(ctx, "ACTION", identifier)
     elif kind in {"koyori.connection.changed.v1", "koyori.calendar.changed.v1"}:
         item = Actions(domain).get(ctx, "CONNECTION", identifier)
+    elif kind == "koyori.routine.changed.v1":
+        from koyori.scheduling import Wakes
+
+        item = Wakes(domain).get_rule(ctx, identifier)
+    elif kind == "koyori.learning.changed.v1":
+        from koyori.learning import Learning
+
+        item = Learning(domain).get(ctx, identifier)
     else:
         domain.admin(ctx)
         return []

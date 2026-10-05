@@ -515,6 +515,7 @@ class Calendar(Service):
         if not next_page and not next_sync:
             raise Problem(502, "INVALID_SYNC_RESPONSE", "Google omitted the sync cursor.")
         writes = [guard("Domain", connection)]
+        content_changed = False
         for event in data.get("items", []):
             event_key = (
                 connection["PK"],
@@ -538,6 +539,14 @@ class Calendar(Service):
                 updated=event.get("updated"),
                 mode="real",
             )
+            content_changed = (
+                content_changed
+                or not previous
+                or any(
+                    previous.get(field) != item.get(field)
+                    for field in ("summary", "start", "end", "deleted", "generation")
+                )
+            )
             writes.append(put("Domain", item, previous))
         updated = revised(
             state,
@@ -551,11 +560,23 @@ class Calendar(Service):
             else (old or {}).get("completedGeneration", 0),
         )
         writes.append(put("Domain", updated, state))
-        writes.append(
-            self.domain.event(
-                ctx, connection["id"], connection["rev"], kind="calendar", mode="real"
-            )
+        version_key = (connection["PK"], f"CALVERSION#{connection['id']}")
+        previous_version = self.store.get("Domain", version_key)
+        content_changed = (
+            content_changed
+            or not next_page
+            and updated["completedGeneration"] != (old or {}).get("completedGeneration", 0)
         )
+        if content_changed or not previous_version:
+            content_version = revised(previous_version) if previous_version else row(*version_key)
+            writes.append(put("Domain", content_version, previous_version))
+            writes.append(
+                self.domain.event(
+                    ctx, connection["id"], content_version["rev"], kind="calendar", mode="real"
+                )
+            )
+        else:
+            writes.append(guard("Domain", previous_version))
         self.store.transact(ctx.guards() + writes)
 
     def events(self, ctx, cid, cursor=None):

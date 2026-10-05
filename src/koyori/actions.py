@@ -175,6 +175,7 @@ class Actions(Service):
             mode="simulated",
             active=True,
             epoch=1,
+            memberEpoch=ctx.member.get("accessEpoch", 1),
             capabilities=["commerce.groceries", "commerce.meals"],
             createdAt=self.domain.now(),
         )
@@ -281,7 +282,7 @@ class Actions(Service):
         )
         return {"id": ctx.actor, "rev": item["rev"]}, [put("Domain", item, old)], expands
 
-    def quote(self, ctx, body):
+    def quote(self, ctx, body, *, reuse_unexecuted=False):
         connection = self.get(ctx, "CONNECTION", body["connectionId"], inactive=False)
         if connection["provider"] != "commerce-simulator" or connection["mode"] != "simulated":
             raise Problem(409, "CAPABILITY_UNAVAILABLE", "No qualified merchant configured.")
@@ -300,9 +301,17 @@ class Actions(Service):
             "Domain", (hkey(ctx.h), f"BUSINESS#{ctx.actor}#{body['intentionId']}")
         )
         if body["operation"] == "create":
-            if business:
+            retry = bool(
+                reuse_unexecuted
+                and business
+                and business["status"] in {"BLOCKED", "REJECTED"}
+                and business["providerVersion"] == 0
+                and business["totalMinor"] == 0
+                and not business["actionId"]
+            )
+            if business and not retry:
                 raise Problem(409, "INTENTION_EXISTS", "This commercial intention already exists.")
-            business_id, previous, provider_version = uid(), 0, 0
+            business_id, previous, provider_version = business["id"] if retry else uid(), 0, 0
         else:
             target = self.get(ctx, "ACTION", body["targetActionId"])
             if (
@@ -335,6 +344,8 @@ class Actions(Service):
             providerVersion=provider_version,
             mode="simulated",
         )
+        if body["operation"] == "create" and business:
+            conditions["retryBusinessRevision"] = business["rev"]
         identifier = uid()
         item = row(
             hkey(ctx.h),
@@ -412,14 +423,37 @@ class Actions(Service):
             GSI1SK=f"{due:020d}#{action['id']}",
         )
 
-    def reserve(self, ctx, body):
+    def reserve(self, ctx, body, *, goal_run=None):
         quote, connection = self.current_quote(ctx, body["quoteId"])
+        goal = None
+        cancellation = False
+        if quote.get("goalId"):
+            goal = self.store.get("Domain", (hkey(ctx.h), f"TASK#{quote['goalId']}"))
+            if (
+                not goal_run
+                or not goal
+                or goal["runEpoch"] != goal_run["runEpoch"]
+                or goal["leaseOwner"] != goal_run["leaseOwner"]
+                or goal["leaseUntil"] <= self.domain.now()
+            ):
+                raise Problem(
+                    409, "GOAL_CONTROL_REQUIRED", "This quote is executed by its current goal run."
+                )
+            cancellation = bool(quote.get("goalCancellation") and goal.get("cancelRequested"))
+            if goal["dispatchEpoch"] != quote["goalEpoch"] or goal["status"] != (
+                "CANCELLING" if cancellation else "RUNNING"
+            ):
+                raise Problem(409, "GOAL_CHANGED", "Goal conditions changed before reservation.")
         terms = quote["conditions"]
         budget = self.budget(ctx)
-        if not budget or not budget["enabled"] or terms["totalMinor"] > budget["perActionMinor"]:
+        if (
+            not budget
+            or (not budget["enabled"] and not cancellation)
+            or terms["totalMinor"] > budget["perActionMinor"]
+        ):
             raise Problem(403, "POLICY_DENIED", "Action exceeds the current policy.")
         approval = None
-        if budget["approvalRequired"]:
+        if budget["approvalRequired"] and not cancellation:
             if not body.get("approvalId"):
                 raise Problem(403, "APPROVAL_REQUIRED", "Approve the exact quote first.")
             approval = self.get(ctx, "APPROVAL", body["approvalId"])
@@ -436,7 +470,15 @@ class Actions(Service):
                 )
         business_key = (hkey(ctx.h), f"BUSINESS#{ctx.actor}#{terms['intentionId']}")
         business = self.store.get("Domain", business_key)
-        if (terms["operation"] == "create" and business) or (
+        retry = bool(
+            business
+            and terms.get("retryBusinessRevision") == business["rev"]
+            and business["status"] in {"BLOCKED", "REJECTED"}
+            and business["providerVersion"] == 0
+            and not business["actionId"]
+            and business["totalMinor"] == 0
+        )
+        if (terms["operation"] == "create" and business and not retry) or (
             terms["operation"] != "create"
             and (
                 not business
@@ -497,6 +539,18 @@ class Actions(Service):
             put("Delivery", self.intent(action)),
             self.domain.event(ctx, aid, 1, kind="action", mode="simulated"),
         ]
+        if goal:
+            action.update(
+                goalId=goal["id"],
+                goalEpoch=goal["dispatchEpoch"],
+                goalStep=quote["goalStep"],
+                goalCancellation=cancellation,
+            )
+            writes.append(guard("Domain", goal))
+            if not cancellation:
+                from koyori.goals import validate_goal_sources
+
+                writes.extend(validate_goal_sources(self.domain, ctx, goal))
         if approval:
             writes.append(put("Domain", revised(approval, consumed=True), approval))
         return {"id": aid, "rev": 1, "status": "READY"}, writes, False
@@ -616,6 +670,34 @@ class Actions(Service):
                     checks = ctx.guards() + [guard("Domain", connection)]
                     if budget:
                         checks.append(guard("Domain", budget))
+                    if action.get("goalId"):
+                        goal = self.store.get("Domain", (hkey(h), f"TASK#{action['goalId']}"))
+                        cancellation = bool(
+                            action.get("goalCancellation") and goal and goal.get("cancelRequested")
+                        )
+                        goal_allowed = bool(
+                            goal
+                            and goal.get("operation") == "coordination.goal"
+                            and goal["owner"] == action["owner"]
+                            and goal["dispatchEpoch"] == action["goalEpoch"]
+                            and goal["status"] not in {"PAUSED", "CANCELLED", "FAILED"}
+                            and (not goal.get("cancelRequested") or cancellation)
+                        )
+                        if cancellation and budget and not budget["enabled"]:
+                            allowed = (
+                                ctx.profile["kind"] == "personal"
+                                and ctx.member.get("accessEpoch", 1) == action["memberEpoch"]
+                                and connection["epoch"] == action["connectionEpoch"]
+                                and budget["policyEpoch"] == action["policyEpoch"]
+                                and action["quoteExpiresAt"] > self.domain.now()
+                            )
+                        allowed = allowed and goal_allowed
+                        if goal:
+                            checks.append(guard("Domain", goal))
+                            if not cancellation:
+                                from koyori.goals import validate_goal_sources
+
+                                checks.extend(validate_goal_sources(self.domain, ctx, goal))
                 except Problem as exc:
                     if exc.status not in {403, 404, 409}:
                         raise

@@ -474,4 +474,7 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
     from koyori.control.stage2_routes import register
 
     register(app, domain, actor, context)
+    from koyori.control.stage3_routes import register as register_stage3
+
+    register_stage3(app, domain, context)
     return app

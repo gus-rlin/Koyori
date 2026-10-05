@@ -58,3 +58,9 @@ Les curseurs sont aussi chiffrés avec AES-GCM pour ne pas révéler une clé d'
 ## Extension étape 2
 
 Les contrats mémoire, contexte, Google Calendar, devis, approbations, budgets et actions sont décrits dans [stage2.md](stage2.md). Ils réutilisent l'identité, le foyer, le step-up, les clés d'idempotence et les préconditions du présent contrat. La première configuration de budget utilise exceptionnellement `If-Match: "0"` ; les autres amendements exigent une révision positive.
+
+## Extension étape 3
+
+Les [contrats de coordination](stage3.md) ajoutent `/v1/goals`, `/v1/routines`, `/v1/learning`, `/v1/notification-policy` et `/v1/notifications`. Les objets sont privés à leur propriétaire personnel, avec contrôle canonique et génération d'accès. Un `202` de création ou de contrôle signifie sauvegarde durable ; les actions restent soumises au devis, au budget et à l'approbation exacte de l'étape 2. La politique de notifications se crée avec `If-Match: "0"`, puis se modifie avec sa révision positive.
+
+Les états de coordination ajoutent `WAITING_TIME`, `WAITING_APPROVAL`, `WAITING_PROVIDER`, `NEEDS_ATTENTION` et `CANCELLING`. Ils sont observables sur `/goals/{id}` ; les routes de contrôle des tâches synthétiques ne pilotent pas ces objectifs. Les versions de plan et les reçus accessibles permettent de distinguer proposition, réservation, envoi, résultat et annulation réellement confirmée.

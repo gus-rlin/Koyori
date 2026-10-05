@@ -10,7 +10,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
-from verify_local import BASE, ROOT, compose, wait_ready
+from verify_local import BASE, ROOT, compose, wait_ready, worker_environment
 
 from koyori.stage2_contracts import BudgetPut, MemoryWrite
 
@@ -54,7 +54,17 @@ def main():
     household = client.get("/v1/households").json()["items"][0]
     h = household["id"]
     client.headers["X-Household-Id"] = h
-    stopped = ["connector", "projection", "workflow", "repair", "publisher", "activity"]
+    stopped = [
+        "connector",
+        "projection",
+        "workflow",
+        "repair",
+        "publisher",
+        "activity",
+        "coordinator",
+        "scheduler",
+        "notifications",
+    ]
     compose("stop", *stopped)
     process = None
     try:
@@ -121,6 +131,7 @@ def main():
             stderr=subprocess.PIPE,
             text=True,
             creationflags=flags,
+            env=worker_environment(),
         )
         reader = ThreadPoolExecutor(max_workers=1)
         try:

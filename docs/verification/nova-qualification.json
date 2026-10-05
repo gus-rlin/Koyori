@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "dateUTC": "2026-10-05T22:48:59.116328+00:00",
+  "scope": "live-nova-synthetic-planning-only",
+  "model": {
+    "mode": "real",
+    "modelId": "us.amazon.nova-2-lite-v1:0",
+    "region": "us-east-1",
+    "promptVersion": "coordination-1",
+    "schemaVersion": "1.0",
+    "maxOutputTokens": 4096
+  },
+  "result": "NOT_RUN",
+  "reason": "aws_credentials_unavailable",
+  "cases": [],
+  "liveNovaQualified": false,
+  "purchasesDispatched": false,
+  "costsMeasured": false
+}

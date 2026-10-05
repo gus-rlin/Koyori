@@ -10,6 +10,10 @@ from koyori.workers.runtime import engine
 
 
 def tick(worker, role: str) -> int:
+    if role in {"coordinator", "scheduler", "notifications"}:
+        from koyori.workers.stage3_runtime import tick as stage3_tick
+
+        return stage3_tick(worker.domain, role)
     if role in {"connector", "projection"}:
         from koyori.workers.stage2_runtime import tick as stage2_tick
 
@@ -30,6 +34,9 @@ def tick(worker, role: str) -> int:
                 worker.project_activity(raw)
             else:
                 worker.consume(raw)
+                from koyori.goals import Goals
+
+                Goals(worker.domain).consume(raw)
                 if raw.get("wake"):
                     worker.run(raw["householdId"], raw["aggregateId"])
             sqs.delete_message(QueueUrl=url, ReceiptHandle=message["ReceiptHandle"])
@@ -45,7 +52,18 @@ def tick(worker, role: str) -> int:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "role", choices=["publisher", "workflow", "activity", "repair", "connector", "projection"]
+        "role",
+        choices=[
+            "publisher",
+            "workflow",
+            "activity",
+            "repair",
+            "connector",
+            "projection",
+            "coordinator",
+            "scheduler",
+            "notifications",
+        ],
     )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()

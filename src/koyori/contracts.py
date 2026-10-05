@@ -93,6 +93,8 @@ class Event(BaseModel):
         "koyori.action.changed.v1",
         "koyori.connection.changed.v1",
         "koyori.calendar.changed.v1",
+        "koyori.routine.changed.v1",
+        "koyori.learning.changed.v1",
     ]
     occurredAt: int
     householdId: Identifier
