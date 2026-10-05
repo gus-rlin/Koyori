@@ -31,7 +31,7 @@ Les rapports JUnit, bundle Lambda, SBOM, template CDK et rapport Docker sont gé
 
 [Empreintes et résultats observés](artifact-evidence.json) lie sources, lock, image, bundle et template. [Historique des revues](review-stage1.md) conserve les constats et leurs corrections ; une note de revue ne remplace pas la qualification des services distants.
 
-La CI est préparée dans `.github/workflows/verify.yaml`, avec actions vérifiées et fixées par commit. Une exécution locale ne prouve pas une exécution GitHub ; aucune publication ni exécution distante n'est annoncée.
+La CI est définie dans `.github/workflows/verify.yaml`, avec actions vérifiées et fixées par commit. La [PR #1](https://github.com/gus-rlin/Koyori/pull/1) publie la branche vers `main` ; les contrôles GitHub sont en cours lors de son ouverture (JRN-009), sans succès distant encore confirmé. Les empreintes JSON ci-dessus ont été enregistrées avant publication et décrivent les vérifications locales.
 
 ## Sources techniques
 

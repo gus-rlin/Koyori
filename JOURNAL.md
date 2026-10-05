@@ -427,3 +427,37 @@ La suite de référence passe sur les émulateurs existants ; renforcer les test
 ### Suite
 
 Aucune action restante pour ces retouches. Commit et envoi de la PR restent à l'utilisateur. La qualification AWS réelle, la voix, les modèles et les connecteurs conservent les limites de JRN-007 et du manifeste. La licence Apache 2.0 est inchangée ; aucune contribution Open Source complémentaire ni publication n'est revendiquée.
+
+## JRN-009 — 2026-10-05 — Publication de la branche et ouverture de la PR
+
+### Objectif et état
+
+Pousser la branche et ouvrir une PR, sur demande explicite de l'utilisateur. État : terminé pour la publication et l'ouverture ; contrôles GitHub en cours. Cette demande remplace la suite de JRN-008 qui laissait la publication à l'utilisateur.
+
+### Réalisations
+
+Retouches enregistrées dans le commit `dbebb13` (`fix: preserve HTTP error headers and request traces`). Branche `gus-rlin/koyori-etape1` poussée sur `origin` avec suivi distant. [PR #1](https://github.com/gus-rlin/Koyori/pull/1) ouverte, non draft, vers `main`, et attachée à cette conversation. La PR couvre le socle complet et les retouches ; sa description distingue les preuves locales et les capacités AWS préparées. Publication consignée dans le présent journal et dans `docs/verification/stage1.md`.
+
+### Choix et raisons
+
+Conserver la branche existante et ses commits ; aucune réécriture ni fusion. Vérifier la branche distante, la base et l'absence de PR ouverte avant création pour éviter un doublon. Ajouter un commit documentaire après l'ouverture afin de conserver l'URL réelle et l'état observé des contrôles. Les preuves JSON de JRN-008 restent un relevé local antérieur à la publication.
+
+### Difficultés et résolution
+
+Aucun problème observé. Les avertissements Git de normalisation LF/CRLF n'empêchent pas les contrôles ni la publication.
+
+### Ce qui a bien fonctionné
+
+Git et GitHub CLI permettent de pousser la branche, créer la PR avec une description enregistrée dans un fichier ignoré et relire ses métadonnées. L'attachement Codex de la PR aboutit.
+
+### Vérifications
+
+`git fetch origin` et contrôle d'ascendance : `origin/main` reste la base de la branche. `git diff --cached --check` : succès. Aucun fichier de clés, `.env`, dump local ou artefact runtime généré suivi dans Git. Lecture GitHub : PR ouverte, non draft, base `main`, head correspondant au commit poussé ; deux contrôles `verify` observés en cours à l'ouverture. Les 68 tests, Ruff, recette Docker et synthèse CDK de JRN-008 restent les résultats locaux précédents ; aucun test applicatif répété pour cette publication. La réussite de la CI distante n'est pas encore établie.
+
+### Retour sur les outils
+
+`senior-code-basics` : contrôles proportionnés à une publication. Git via PowerShell : commit et push réussis. GitHub CLI 2.88.0 : création et inspection de PR réussies, réutilisation souhaitée pour les publications suivantes. `attach_artifact` : PR liée à la tâche avec succès. Aucun déploiement, coût ni ressource AWS créé.
+
+### Suite
+
+Examiner le résultat des contrôles GitHub et la revue avant fusion. La PR est ouverte, aucune fusion réalisée. Licence Apache 2.0 conservée ; cette publication du dépôt principal ne prouve pas la contribution complémentaire du mini-défi Open Source.
