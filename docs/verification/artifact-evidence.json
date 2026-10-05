@@ -1,14 +1,14 @@
 {
   "schemaVersion": "1.0",
-  "dateEuropeParis": "2026-10-05T13:48:10.200110+02:00",
-  "scope": "local-complete-and-aws-preparation",
-  "sourceSha256": "f7993b3a64565f4d3ecc7e887c14cf0b9a0f064adc57f62404b6c22b8a61c910",
-  "lockSha256": "98b582d33ced5f31a45141a7764016b98cbca4284413552f4062a34960622676",
-  "lambdaBundleSha256": "2c746b86b36bd739d9bdf6339e77bb34166f0376956f74cdb1579e5ee17aee38",
-  "templateSha256": "bed8026309a84568931dd4ab47ce478a55645c4f32cf45c67abd88d9d4d93570",
-  "runtimeImageId": "sha256:263dc4fdb6bd6d7984143b826d5c87ff6dd58f60693e243d44cdeb4c36eebd30",
+  "dateEuropeParis": "2026-10-06T00:12:28.740076+02:00",
+  "scope": "stages-one-and-two-local-and-aws-preparation",
+  "sourceSha256": "1adbd296685194580166ad3569a31f95b28eb4b88903dba4365e8ee7e339ae86",
+  "lockSha256": "ff1acaf8f25a7cd060c19c66a01404d62d70cbb73e2d6f5f86a5c0ce4fc652c1",
+  "lambdaBundleSha256": "785cb28de6096dd68b302eba1bced64c7e8ce842193135fafc9488c9e5c3b166",
+  "templateSha256": "7cf28f2cb3ff1a8580e3e5318a9917acfd63479b1e1e10d91496cb35dd611360",
+  "runtimeImageId": "sha256:b38fbf2358cb837a94e9b9886cd8750b1814c596c452701f7ade2f72de6e37de",
   "pytest": {
-    "tests": 79,
+    "tests": 135,
     "failures": 0,
     "errors": 0,
     "skipped": 0
@@ -22,6 +22,17 @@
     "sameTaskCompletedAfterLeaseRecovery": true,
     "durableActivityObserved": true
   },
+  "stage2Recovery": {
+    "localYesterdayRecall": true,
+    "correctionAndErasure": true,
+    "providerCommittedBeforeProcessKilled": true,
+    "reservationKeptWithoutReceipt": true,
+    "storageAndApiRestart": true,
+    "idempotentReplaySameAction": true,
+    "sameProviderOperationReconciled": true
+  },
+  "googleQualified": false,
+  "bedrockAndVectorsQualified": false,
   "runtimeDependencyAudit": "no known vulnerabilities found",
   "awsDeployedOrQualified": false,
   "githubWorkflowExecuted": false

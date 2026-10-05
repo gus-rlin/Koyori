@@ -29,12 +29,15 @@ def dynamo(tmp_path, monkeypatch):
     settings = replace(
         Settings(), prefix=f"KoyoriTest{uuid4().hex}", key_dir=str(tmp_path / "keys")
     )
+    provider_key = tmp_path / "provider.key"
+    provider_key.write_bytes(b"k" * 32)
+    settings = replace(settings, token_key_file=str(provider_key))
     initialize_keys(settings)
     store = DynamoStore(settings)
     store.create_tables()
     h = Harness(settings, store, Clock())
     yield h
-    for table in ("Domain", "Delivery", "Sessions"):
+    for table in ("Domain", "Delivery", "Sessions", "Connections"):
         store.client.delete_table(TableName=store.name(table))
 
 

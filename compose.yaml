@@ -17,6 +17,8 @@ x-runtime: &runtime
     KOYORI_ACTIVITY_QUEUE_URL: http://elasticmq:9324/000000000000/koyori-activity
     KOYORI_KEY_DIR: /state/keys
     KOYORI_ISSUER_DIR: /state/issuer
+    KOYORI_TOKEN_KEY_FILE: /state/provider/envelope.key
+    KOYORI_SEMANTIC_MODE: simulated
   depends_on:
     bootstrap: {condition: service_completed_successfully}
   restart: unless-stopped
@@ -39,8 +41,8 @@ services:
   key-permissions:
     image: python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
     user: "0:0"
-    command: ["python", "-c", "import os; [os.chown(p, 10001, 10001) for p in ('/state/keys','/state/issuer')]"]
-    volumes: ["public-keys:/state/keys", "issuer-keys:/state/issuer"]
+    command: ["python", "-c", "import os; [os.chown(p, 10001, 10001) for p in ('/state/keys','/state/issuer','/state/provider')]"]
+    volumes: ["public-keys:/state/keys", "issuer-keys:/state/issuer", "provider-key:/state/provider"]
   bootstrap:
     <<: *runtime
     restart: "no"
@@ -49,11 +51,11 @@ services:
       elasticmq: {condition: service_started}
       key-permissions: {condition: service_completed_successfully}
     command: ["python", "-m", "koyori.bootstrap"]
-    volumes: ["public-keys:/state/keys", "issuer-keys:/state/issuer"]
+    volumes: ["public-keys:/state/keys", "issuer-keys:/state/issuer", "provider-key:/state/provider"]
   api:
     <<: *runtime
     ports: ["127.0.0.1:${KOYORI_API_PORT:-8088}:8080"]
-    volumes: ["public-keys:/state/keys:ro"]
+    volumes: ["public-keys:/state/keys:ro", "provider-key:/state/provider:ro"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready',timeout=3)"]
       interval: 10s
@@ -71,6 +73,13 @@ services:
   repair:
     <<: *runtime
     command: ["python", "-m", "koyori.workers.cli", "repair"]
+  connector:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "connector"]
+    volumes: ["provider-key:/state/provider:ro"]
+  projection:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "projection"]
   demo:
     <<: *runtime
     profiles: ["tools"]
@@ -83,6 +92,7 @@ volumes:
   elasticmq-data:
   public-keys:
   issuer-keys:
+  provider-key:
 
 networks:
   default:

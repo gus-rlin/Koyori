@@ -110,5 +110,8 @@ class Harness:
 def harness(tmp_path, monkeypatch):
     monkeypatch.setenv("KOYORI_ISSUER_DIR", str(tmp_path / "issuer"))
     settings = replace(Settings(), key_dir=str(tmp_path / "keys"))
+    provider_key = tmp_path / "provider.key"
+    provider_key.write_bytes(b"k" * 32)
+    settings = replace(settings, token_key_file=str(provider_key))
     initialize_keys(settings)
     return Harness(settings, MemoryStore(), Clock())

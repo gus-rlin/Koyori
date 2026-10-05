@@ -14,6 +14,7 @@ def build(outdir="cdk.out"):
         "KoyoriFoundation",
         stage=os.getenv("KOYORI_STAGE", "dev"),
         callback_url=os.getenv("KOYORI_CALLBACK_URL", "https://example.invalid/oauth/callback"),
+        google_client_id=os.getenv("KOYORI_GOOGLE_CLIENT_ID"),
     )
     return app.synth()
 

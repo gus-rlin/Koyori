@@ -4,7 +4,11 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock ./
 COPY src ./src
-RUN uv sync --frozen --no-dev && useradd --uid 10001 --create-home koyori
+RUN --mount=type=secret,id=trusted_ca \
+    if [ -f /run/secrets/trusted_ca ]; then \
+      SSL_CERT_FILE=/run/secrets/trusted_ca uv --system-certs sync --frozen --no-dev; \
+    else uv sync --frozen --no-dev; fi \
+    && useradd --uid 10001 --create-home koyori
 ENV PATH="/app/.venv/bin:$PATH"
 USER 10001:10001
 CMD ["uvicorn", "koyori.control.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]

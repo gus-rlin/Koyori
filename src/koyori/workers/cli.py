@@ -10,6 +10,10 @@ from koyori.workers.runtime import engine
 
 
 def tick(worker, role: str) -> int:
+    if role in {"connector", "projection"}:
+        from koyori.workers.stage2_runtime import tick as stage2_tick
+
+        return stage2_tick(worker.domain, role)
     if role == "publisher":
         return Publisher(worker).sweep()
     if role == "repair":
@@ -40,7 +44,9 @@ def tick(worker, role: str) -> int:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("role", choices=["publisher", "workflow", "activity", "repair"])
+    parser.add_argument(
+        "role", choices=["publisher", "workflow", "activity", "repair", "connector", "projection"]
+    )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)

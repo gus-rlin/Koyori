@@ -1,4 +1,4 @@
-"""Stage-one tables, identity, HTTP ingress and durable delivery with scoped IAM."""
+"""Durable control and stage-two connectors/projections, with separate credential roles."""
 
 from pathlib import Path
 from urllib.parse import urlparse
@@ -12,9 +12,11 @@ from aws_cdk import aws_dynamodb as ddb
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_kms as kms
 from aws_cdk import aws_lambda as lambdas
 from aws_cdk import aws_lambda_event_sources as sources
 from aws_cdk import aws_logs as logs
+from aws_cdk import aws_s3vectors as vectors
 from aws_cdk import aws_secretsmanager as secrets
 from aws_cdk import aws_sqs as sqs
 from aws_cdk.aws_apigatewayv2_integrations import HttpLambdaIntegration
@@ -22,13 +24,21 @@ from constructs import Construct
 
 
 class FoundationStack(cdk.Stack):
-    def __init__(self, scope: Construct, construct_id: str, *, stage: str, callback_url: str):
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        stage: str,
+        callback_url: str,
+        google_client_id: str | None = None,
+    ):
         super().__init__(scope, construct_id, env=cdk.Environment(region="eu-west-1"))
         if stage not in {"dev", "prod"} or urlparse(callback_url).scheme != "https":
             raise ValueError("Stage and HTTPS callback must be configured")
         prefix = f"Koyori{stage.title()}"
         tables = {}
-        for name in ("Domain", "Delivery", "Sessions"):
+        for name in ("Domain", "Delivery", "Sessions", "Connections"):
             table = ddb.Table(
                 self,
                 name,
@@ -114,6 +124,36 @@ class FoundationStack(cdk.Stack):
             ),
             removal_policy=cdk.RemovalPolicy.RETAIN,
         )
+        provider_key = kms.Key(
+            self,
+            "ProviderEnvelopeKey",
+            enable_key_rotation=True,
+            removal_policy=cdk.RemovalPolicy.RETAIN,
+        )
+        google_secret = secrets.Secret(
+            self,
+            "GoogleClientSecret",
+            description="Replace with the Google OAuth client secret before qualification",
+            removal_policy=cdk.RemovalPolicy.RETAIN,
+        )
+        vector_name = f"koyori-{stage}-{self.account}-{self.region}-memory"
+        vector_bucket = vectors.CfnVectorBucket(
+            self,
+            "MemoryVectors",
+            vector_bucket_name=vector_name,
+            encryption_configuration={"sseType": "AES256"},
+        )
+        vector_bucket.apply_removal_policy(cdk.RemovalPolicy.RETAIN)
+        vector_index = vectors.CfnIndex(
+            self,
+            "MemoryIndex",
+            vector_bucket_arn=vector_bucket.attr_vector_bucket_arn,
+            index_name="memory-v1",
+            data_type="float32",
+            dimension=512,
+            distance_metric="cosine",
+        )
+        vector_index.apply_removal_policy(cdk.RemovalPolicy.RETAIN)
         bus = events.EventBus(self, "DomainEvents")
         queues, dead_letters = {}, {}
         for name in ("workflow", "activity"):
@@ -144,6 +184,10 @@ class FoundationStack(cdk.Stack):
                         "koyori.task.changed.v1",
                         "koyori.access.changed.v1",
                         "koyori.policy.changed.v1",
+                        "koyori.memory.changed.v1",
+                        "koyori.action.changed.v1",
+                        "koyori.connection.changed.v1",
+                        "koyori.calendar.changed.v1",
                     ],
                 ),
             )
@@ -176,6 +220,8 @@ class FoundationStack(cdk.Stack):
             "workflow": "koyori.workers.lambda_handlers.consume",
             "activity": "koyori.workers.lambda_handlers.project_activity",
             "repair": "koyori.workers.lambda_handlers.repair",
+            "connector": "koyori.workers.stage2_runtime.connectors",
+            "projection": "koyori.workers.stage2_runtime.projections",
         }.items():
             group = logs.LogGroup(
                 self,
@@ -190,7 +236,9 @@ class FoundationStack(cdk.Stack):
                 code=lambdas.Code.from_asset(str(code_path)),
                 handler=handler,
                 environment=environment,
-                timeout=cdk.Duration.seconds(30),
+                timeout=cdk.Duration.seconds(
+                    180 if name == "connector" else 60 if name in {"api", "projection"} else 30
+                ),
                 memory_size=256,
                 reserved_concurrent_executions=4,
                 log_group=group,
@@ -203,7 +251,11 @@ class FoundationStack(cdk.Stack):
                 if name == "publisher"
                 else ("Domain", "Delivery")
                 if name in {"workflow", "activity", "repair"}
-                else ("Domain", "Delivery", "Sessions")
+                else ("Domain", "Delivery", "Connections")
+                if name == "connector"
+                else ("Domain", "Delivery")
+                if name == "projection"
+                else ("Domain", "Delivery", "Sessions", "Connections")
             )
             fn.add_to_role_policy(
                 iam.PolicyStatement(
@@ -227,6 +279,39 @@ class FoundationStack(cdk.Stack):
                 bus.grant_put_events_to(fn)
             if name == "api":
                 cursor.grant_read(fn)
+            if name in {"api", "connector"}:
+                fn.add_environment("KOYORI_TOKEN_KEY_ARN", provider_key.key_arn)
+                fn.add_environment("KOYORI_GOOGLE_CLIENT_SECRET_ARN", google_secret.secret_arn)
+                if google_client_id:
+                    fn.add_environment("KOYORI_GOOGLE_CLIENT_ID", google_client_id)
+                google_secret.grant_read(fn)
+                fn.add_to_role_policy(
+                    iam.PolicyStatement(
+                        actions=["kms:GenerateDataKey", "kms:Decrypt"],
+                        resources=[provider_key.key_arn],
+                        conditions={"StringEquals": {"kms:EncryptionContext:env": stage}},
+                    )
+                )
+            if name in {"api", "projection"}:
+                fn.add_environment("KOYORI_SEMANTIC_MODE", "aws")
+                fn.add_environment("KOYORI_VECTOR_BUCKET", vector_name)
+                fn.add_environment("KOYORI_VECTOR_INDEX", "memory-v1")
+                fn.add_to_role_policy(
+                    iam.PolicyStatement(
+                        actions=["bedrock:InvokeModel"],
+                        resources=[
+                            f"arn:{self.partition}:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v2:0"
+                        ],
+                    )
+                )
+                fn.add_to_role_policy(
+                    iam.PolicyStatement(
+                        actions=["s3vectors:PutVectors", "s3vectors:DeleteVectors"]
+                        if name == "projection"
+                        else ["s3vectors:QueryVectors", "s3vectors:GetVectors"],
+                        resources=[vector_index.attr_index_arn],
+                    )
+                )
             cw.Alarm(
                 self, f"{name}Errors", metric=fn.metric_errors(), threshold=1, evaluation_periods=1
             )
@@ -288,6 +373,13 @@ class FoundationStack(cdk.Stack):
             schedule=events.Schedule.rate(cdk.Duration.minutes(1)),
             targets=[targets.LambdaFunction(functions["repair"], retry_attempts=2)],
         )
+        for role in ("connector", "projection"):
+            events.Rule(
+                self,
+                f"{role}Schedule",
+                schedule=events.Schedule.rate(cdk.Duration.minutes(1)),
+                targets=[targets.LambdaFunction(functions[role], retry_attempts=2)],
+            )
         api = apigw.HttpApi(
             self,
             "ControlApi",
@@ -295,6 +387,13 @@ class FoundationStack(cdk.Stack):
             create_default_stage=True,
         )
         stage_resource = api.default_stage.node.default_child
+        for role in ("api", "connector"):
+            functions[role].add_environment(
+                "KOYORI_GOOGLE_REDIRECT_URI", api.api_endpoint + "/v1/oauth/google/callback"
+            )
+            functions[role].add_environment(
+                "KOYORI_GOOGLE_WEBHOOK_URL", api.api_endpoint + "/v1/webhooks/google-calendar"
+            )
         stage_resource.add_property_override("DefaultRouteSettings.ThrottlingBurstLimit", 20)
         stage_resource.add_property_override("DefaultRouteSettings.ThrottlingRateLimit", 10)
         vault = backup.BackupVault(self, "RecoveryVault", removal_policy=cdk.RemovalPolicy.RETAIN)
@@ -314,3 +413,6 @@ class FoundationStack(cdk.Stack):
         cdk.CfnOutput(self, "ApiUrl", value=api.api_endpoint)
         cdk.CfnOutput(self, "Issuer", value=pool.user_pool_provider_url)
         cdk.CfnOutput(self, "ClientId", value=client.user_pool_client_id)
+        cdk.CfnOutput(self, "GoogleClientSecretArn", value=google_secret.secret_arn)
+        cdk.CfnOutput(self, "ProviderEnvelopeKeyArn", value=provider_key.key_arn)
+        cdk.CfnOutput(self, "MemoryVectorIndexArn", value=vector_index.attr_index_arn)

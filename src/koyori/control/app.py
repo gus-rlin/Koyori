@@ -101,7 +101,7 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
                 chunks.append(chunk)
             request._body = b"".join(chunks)
             if request.method == "DELETE" or request.url.path.endswith(
-                ("/pause", "/resume", "/cancel")
+                ("/pause", "/resume", "/cancel", "/sync")
             ):
                 if request._body.strip():
                     try:
@@ -117,9 +117,15 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
             response = await call_next(request)
         except Problem as exc:
             response = problem_response(request, exc)
-        except Exception:
+        except Exception as exc:
             LOG.error(
-                json.dumps({"event": "request_failed", "requestId": request.state.request_id})
+                json.dumps(
+                    {
+                        "event": "request_failed",
+                        "requestId": request.state.request_id,
+                        "errorClass": type(exc).__name__,
+                    }
+                )
             )
             response = problem_response(
                 request,
@@ -174,7 +180,7 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
 
     @app.get("/health/live")
     def live():
-        return {"status": "alive", "stage": 1}
+        return {"status": "alive", "stage": 2}
 
     @app.get("/health/ready")
     def ready():
@@ -448,7 +454,9 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
                 domain.task_access(ctx, item["aggregateId"])
             else:
                 try:
-                    domain.admin(ctx)
+                    from koyori.object_access import event_access
+
+                    event_access(domain, ctx, item["type"], item["aggregateId"])
                 except Problem:
                     return None
             return item
@@ -463,4 +471,7 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
             authorize=authorize,
         )
 
+    from koyori.control.stage2_routes import register
+
+    register(app, domain, actor, context)
     return app
