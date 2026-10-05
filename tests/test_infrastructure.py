@@ -34,6 +34,7 @@ def test_lambda_separation_limits_partial_failure_and_identity(resources):
     assert len(functions) == 5
     for fn in functions:
         assert fn["Runtime"] == "python3.12"
+        assert fn.get("Architectures", ["x86_64"]) == ["x86_64"]
         assert fn["Timeout"] == 30
         assert fn["ReservedConcurrentExecutions"] == 4
         assert fn["TracingConfig"]["Mode"] == "Active"

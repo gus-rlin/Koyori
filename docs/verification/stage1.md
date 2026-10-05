@@ -4,7 +4,11 @@
 
 ## Retouches avant PR — 2026-10-05
 
-Deux corrections ciblées des réponses d'erreur HTTP sont consignées dans JRN-008 : en-têtes et trace communs pour les rejets précoces `413/422`, et conservation d'`Allow` pour les `405`. **68 tests passent sans exclusion**, Ruff et format passent ; les trois réponses sont aussi vérifiées sur l'API en conteneur. Image et bundle Lambda reconstruits, recette Docker de reprise PASS, synthèse CDK et ses cinq tests réussis. Les [empreintes](artifact-evidence.json) correspondent à cette version ; l'audit des dépendances de la livraison initiale reste applicable au lock inchangé. La note **9,3/10** ci-dessus porte sur la revue initiale, qui n'a pas été rejouée pour ces retouches.
+Deux corrections ciblées des réponses d'erreur HTTP sont consignées dans JRN-008 : en-têtes et trace communs pour les rejets précoces `413/422`, et conservation d'`Allow` pour les `405`. **68 tests passent sans exclusion**, Ruff et format passent ; les trois réponses sont aussi vérifiées sur l'API en conteneur. Image et bundle Lambda reconstruits, recette Docker de reprise PASS, synthèse CDK et ses cinq tests réussis. Les empreintes de cette version sont conservées au commit `dbebb13` ; l'audit des dépendances de la livraison initiale reste applicable au lock inchangé. La note **9,3/10** ci-dessus porte sur la revue initiale, qui n'a pas été rejouée pour ces retouches.
+
+## Corrections de la revue de PR — 2026-10-05
+
+JRN-010 corrige le builder Lambda fixé sur `linux/amd64` et la libération transactionnelle des places de foyer à la révocation. **71 tests passent sans exclusion**, dont plafond de huit foyers, huit révocations suivies d'un nouvel ajout ou d'une création, réinscription, rollback concurrent et rejeu idempotent sur DynamoDB Local. Le bundle construit avec `DOCKER_DEFAULT_PLATFORM=linux/arm64` contient trois bibliothèques natives ELF x86_64, importées avec succès dans un conteneur x86_64 ; un hôte ARM64 réel n'a pas été utilisé. Ruff, format, recette Docker de récupération, synthèse CDK et ses cinq tests passent. Les [empreintes actuelles](artifact-evidence.json) correspondent à ces corrections.
 
 ## Recettes et preuves
 
@@ -31,7 +35,7 @@ Les rapports JUnit, bundle Lambda, SBOM, template CDK et rapport Docker sont gé
 
 [Empreintes et résultats observés](artifact-evidence.json) lie sources, lock, image, bundle et template. [Historique des revues](review-stage1.md) conserve les constats et leurs corrections ; une note de revue ne remplace pas la qualification des services distants.
 
-La CI est définie dans `.github/workflows/verify.yaml`, avec actions vérifiées et fixées par commit. La [PR #1](https://github.com/gus-rlin/Koyori/pull/1) publie la branche vers `main` ; les contrôles GitHub sont en cours lors de son ouverture (JRN-009), sans succès distant encore confirmé. Les empreintes JSON ci-dessus ont été enregistrées avant publication et décrivent les vérifications locales.
+La CI est définie dans `.github/workflows/verify.yaml`, avec actions vérifiées et fixées par commit. La [PR #1](https://github.com/gus-rlin/Koyori/pull/1) publie la branche vers `main` ; les deux contrôles GitHub du commit `4a63a3a` ont réussi. La CI des corrections de JRN-010 reste à consulter après leur publication. Les empreintes JSON décrivent les vérifications locales du correctif.
 
 ## Sources techniques
 

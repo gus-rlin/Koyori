@@ -276,9 +276,8 @@ class Domain:
                     )
                 self.context(actor, cached["response"]["id"])
                 return cached["response"]
-            # Bound both membership discovery and household creation per principal.
-            links, _ = self.store.query("Domain", f"P#{actor}", prefix="H#", limit=9)
-            if len(links) >= 8:
+            # Revoked discovery links remain as history; only current slots count.
+            if profile and profile.get("householdCount", 0) >= 8:
                 raise Problem(429, "HOUSEHOLD_LIMIT", "Principal household limit reached.")
             hid = uid()
             profile_new = (
@@ -377,11 +376,18 @@ class Domain:
             put("Domain", household, ctx.household),
             self.event(ctx, principal, member["rev"], kind="access"),
         ]
-        if not link:
-            links, _ = self.store.query("Domain", f"P#{principal}", prefix="H#", limit=9)
-            if len(links) >= 8:
+        if not link or not link.get("active", True):
+            if profile and profile.get("householdCount", 0) >= 8:
                 raise Problem(429, "HOUSEHOLD_LIMIT", "Principal household limit reached.")
-            changes.append(put("Domain", row(f"P#{principal}", f"H#{ctx.h}", householdId=ctx.h)))
+            changes.append(
+                put(
+                    "Domain",
+                    revised(link, active=True)
+                    if link
+                    else row(f"P#{principal}", f"H#{ctx.h}", householdId=ctx.h),
+                    link,
+                )
+            )
             changes.append(
                 put(
                     "Domain",
@@ -436,13 +442,27 @@ class Domain:
             if revoke
             else ctx.household.get("memberIds", [ctx.actor]),
         )
+        changes = [
+            put("Domain", member, old),
+            put("Domain", household, ctx.household),
+            self.event(ctx, principal, member["rev"], kind="access"),
+        ]
+        if revoke:
+            profile = self.store.get("Domain", (f"P#{principal}", "PROFILE"))
+            link = self.store.get("Domain", (f"P#{principal}", f"H#{ctx.h}"))
+            changes.extend(
+                [
+                    put(
+                        "Domain",
+                        revised(profile, householdCount=profile["householdCount"] - 1),
+                        profile,
+                    ),
+                    put("Domain", revised(link, active=False), link),
+                ]
+            )
         return (
             projection(member),
-            [
-                put("Domain", member, old),
-                put("Domain", household, ctx.household),
-                self.event(ctx, principal, member["rev"], kind="access"),
-            ],
+            changes,
             not revoke
             and (
                 admin_delta > 0

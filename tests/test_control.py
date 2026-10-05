@@ -6,7 +6,7 @@ from uuid import uuid4
 import jwt
 import pytest
 
-from koyori.contracts import Command, MemberCreate
+from koyori.contracts import Command, HouseholdCreate, MemberCreate
 from koyori.demo import issuer_dir, token
 from koyori.domain import hkey
 from koyori.errors import Problem
@@ -296,12 +296,48 @@ def test_revoke_membership_blocks_reads_and_command_replay(harness):
     tid = h.command("sam", key=key)
     result = h.client.delete(f"/v1/households/{h.h}/members/sam", headers=h.headers(version=1))
     assert result.status_code == 200
+    assert h.domain.store.get("Domain", ("P#sam", "PROFILE"))["householdCount"] == 0
+    assert h.domain.store.get("Domain", ("P#sam", f"H#{h.h}"))["active"] is False
     assert h.client.get(f"/v1/tasks/{tid}", headers=h.headers("sam")).status_code == 403
     body = Command(operation="synthetic.checkpoint", label="Synthetic checkpoint").model_dump()
     assert (
         h.client.post("/v1/commands", json=body, headers=h.headers("sam", key=key)).status_code
         == 403
     )
+
+
+@pytest.mark.parametrize("admission", ["membership", "creation"])
+def test_revoked_memberships_free_household_slots(harness, admission):
+    h = harness
+    body = HouseholdCreate(name="Synthetic quota fixture").model_dump()
+    households = [h.h] + [
+        h.domain.create_household("alex", body, uuid4().hex)["id"] for _ in range(7)
+    ]
+    member = MemberCreate(principalId="sam").model_dump()
+    for hid in households[1:]:
+        ctx = h.domain.context("alex", hid)
+        _, writes, _ = h.domain.add_member(ctx, member)
+        h.domain.store.transact(ctx.guards() + writes)
+
+    def admit():
+        if admission == "creation":
+            return h.domain.create_household("sam", body, uuid4().hex)["id"]
+        ctx = h.domain.context("robin", h.h2)
+        _, writes, _ = h.domain.add_member(ctx, member)
+        h.domain.store.transact(ctx.guards() + writes)
+        return h.h2
+
+    with pytest.raises(Problem) as failure:
+        admit()
+    assert failure.value.code == "HOUSEHOLD_LIMIT"
+    for remaining, hid in enumerate(households, start=1):
+        ctx = h.domain.context("alex", hid)
+        _, writes, _ = h.domain.change_member(ctx, "sam", {}, 1, revoke=True)
+        h.domain.store.transact(ctx.guards() + writes)
+        assert h.domain.store.get("Domain", ("P#sam", "PROFILE"))["householdCount"] == 8 - remaining
+    assert h.client.get("/v1/households", headers=h.headers("sam")).json()["items"] == []
+    hid = admit()
+    assert h.domain.context("sam", hid).profile["householdCount"] == 1
 
 
 def test_reenrollment_does_not_resurrect_old_delegation_or_execution(harness):
@@ -336,6 +372,8 @@ def test_reenrollment_does_not_resurrect_old_delegation_or_execution(harness):
         == 201
     )
     assert h.client.get(f"/v1/tasks/{delegated}", headers=h.headers("sam")).status_code == 404
+    assert h.domain.store.get("Domain", ("P#sam", "PROFILE"))["householdCount"] == 1
+    assert h.domain.store.get("Domain", ("P#sam", f"H#{h.h}"))["active"] is True
     h.start(owned)
     assert h.task(owned, "sam")["status"] == "FAILED"
 

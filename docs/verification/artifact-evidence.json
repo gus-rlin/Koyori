@@ -1,14 +1,14 @@
 {
   "schemaVersion": "1.0",
-  "dateEuropeParis": "2026-10-05T04:50:21.749719+02:00",
+  "dateEuropeParis": "2026-10-05T06:38:20.298435+02:00",
   "scope": "local-complete-and-aws-preparation",
-  "sourceSha256": "51a8147e39cae3567eb4754776b9c7e8e5824768f0eb733cb4e1a306297fc80b",
+  "sourceSha256": "59c43d8d28cbe847f1427fa883e93c733c3c5ad8fd2e076e2911772621478a05",
   "lockSha256": "98b582d33ced5f31a45141a7764016b98cbca4284413552f4062a34960622676",
-  "lambdaBundleSha256": "2806a792d3955f8d0cb57ff5e934e909ef7b215f82b880ca8b3e622a336cfd59",
-  "templateSha256": "0ece4df1175b0806c94271d044cf50851b838a41861215659589cfaf324017d0",
-  "runtimeImageId": "sha256:e5c457eaec4be422e5271288ca393b476ef792c781bd9427a37d6f08608a8af4",
+  "lambdaBundleSha256": "aab00d7be29900e137873f4f22c360573caa34b3f8515d052e073b3105871cbb",
+  "templateSha256": "10847333913de043f6984feaed961901d73fea228cd3e2d8fd33ea475ae4ac28",
+  "runtimeImageId": "sha256:a053c04d8ef57341574cdd18b79677e6189aeec88e44845239a2b2cc0dc3139e",
   "pytest": {
-    "tests": 68,
+    "tests": 71,
     "failures": 0,
     "errors": 0,
     "skipped": 0

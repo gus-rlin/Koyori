@@ -10,8 +10,10 @@ from conftest import Clock, Harness
 
 from koyori.backup import export_local, restore_local
 from koyori.config import Settings
+from koyori.contracts import MemberCreate
 from koyori.demo import initialize_keys
 from koyori.domain import Domain, hkey
+from koyori.errors import Conflict
 from koyori.security import Cursors
 from koyori.store import DynamoStore, put, revised
 from koyori.workers.engine import Engine, Publisher
@@ -71,6 +73,30 @@ def test_real_transaction_rolls_back_every_record(dynamo):
         )
     assert h.domain.store.get("Domain", (hkey(h.h), "TEST#atomic")) is None
     assert h.domain.context("alex", h.h).household["activeTasks"] == 0
+
+
+def test_membership_slot_release_is_atomic_and_idempotent(dynamo):
+    h = dynamo
+    ctx = h.domain.context("alex", h.h)
+    _, revoke, _ = h.domain.change_member(ctx, "sam", {}, 1, revoke=True)
+    other = h.domain.context("robin", h.h2)
+    _, addition, _ = h.domain.add_member(other, MemberCreate(principalId="sam").model_dump())
+    h.domain.store.transact(other.guards() + addition)
+    with pytest.raises(Conflict):
+        h.domain.store.transact(ctx.guards() + revoke)
+    assert h.domain.context("sam", h.h).profile["householdCount"] == 2
+    assert h.domain.store.get("Domain", ("P#sam", f"H#{h.h}")).get("active", True)
+    headers = h.headers(version=1)
+    path = f"/v1/households/{h.h}/members/sam"
+    first = h.client.delete(path, headers=headers)
+    replay = h.client.delete(path, headers=headers)
+    assert first.status_code == replay.status_code == 200
+    assert first.json() == replay.json()
+    assert h.domain.context("sam", h.h2).profile["householdCount"] == 1
+    assert h.domain.store.get("Domain", ("P#sam", f"H#{h.h}"))["active"] is False
+    assert (
+        h.client.get(f"/v1/households/{h.h}/members", headers=h.headers("sam")).status_code == 403
+    )
 
 
 def test_real_queues_duplicate_after_publish_crash_and_partial_batch(dynamo):

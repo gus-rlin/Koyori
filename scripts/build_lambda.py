@@ -28,6 +28,8 @@ def main():
             "docker",
             "run",
             "--rm",
+            "--platform",
+            "linux/amd64",
             "--mount",
             "type=volume,source=koyori-lambda-build-cache,target=/root/.cache/pip",
             "--mount",

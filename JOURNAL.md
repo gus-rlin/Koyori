@@ -461,3 +461,43 @@ Git et GitHub CLI permettent de pousser la branche, créer la PR avec une descri
 ### Suite
 
 Examiner le résultat des contrôles GitHub et la revue avant fusion. La PR est ouverte, aucune fusion réalisée. Licence Apache 2.0 conservée ; cette publication du dépôt principal ne prouve pas la contribution complémentaire du mini-défi Open Source.
+
+## JRN-010 — 2026-10-05 — Corrections de la revue automatisée de la PR #1
+
+### Objectif et état
+
+Corriger les deux constats de la revue automatisée du commit `dbebb13a4b`, avec la plus petite diff possible, puis enregistrer et pousser la mise à jour sur la [PR #1](https://github.com/gus-rlin/Koyori/pull/1). État : terminé pour les corrections et vérifications. Cette entrée accompagne leur commit et publication sur la branche de la PR.
+
+### Réalisations
+
+`scripts/build_lambda.py` fixe le conteneur du bundle sur `linux/amd64`, correspondant aux fonctions Lambda x86_64 préparées. `src/koyori/domain.py` retire logiquement le lien de découverte et décrémente `householdCount` avec la révocation ; ajout et création de foyer utilisent ce compteur protégé transactionnellement. Une réinscription réactive le lien et réserve une place, en conservant la nouvelle génération d'accès. Régressions ciblées dans les tests de contrôle et d'intégration ; assertion de l'architecture dans le test du template. Preuves actualisées dans `docs/verification` et description de la PR actualisée en conservant son texte anglais.
+
+### Choix et raisons
+
+Réutiliser le compteur et les écritures conditionnelles existants plutôt qu'ajouter une suppression au magasin ou compter un historique paginé. Les tombstones conservent l'historique et la réinscription, sans restaurer les anciens grants. Fixer seulement la plateforme du builder suffit à conserver l'architecture CDK existante. Sources officielles consultées le 2026-10-05 : [paquets Python Lambda](https://docs.aws.amazon.com/lambda/latest/dg/python-package.html) et [docker run](https://docs.docker.com/reference/cli/docker/container/run/).
+
+### Difficultés et résolution
+
+Quatre cas reproduisent les défauts de révocation avant correction et passent après correction : compteur non décrémenté, refus après huit révocations, création de foyer également bloquée et lien de réinscription non réactivé explicitement. Aucun hôte ARM64 réel n'a été utilisé ; le build a été exécuté avec un défaut Docker ARM64 et les trois bibliothèques natives produites ont été vérifiées directement comme x86_64.
+
+GitHub CLI 2.88.0 : `gh pr edit 1 --repo gus-rlin/Koyori --body-file .local/pr-stage1-body.md` échoue avec `missing required scopes [read:project]`, alors qu'une simple modification de description est demandée. Impact : édition bloquée par cette commande. Contournement réussi : `gh api --method PATCH repos/gus-rlin/Koyori/pulls/1 --input .local/pr-stage1-update.json`, avec le même accès au dépôt, sans élargir les permissions. Suggestion d'amélioration : ne pas exiger la lecture des projets pour une édition limitée au corps de la PR. Aucun blocage restant.
+
+### Ce qui a bien fonctionné
+
+Les fixtures existantes permettent de reproduire le plafond et de vérifier les anciennes délégations sans ajouter de dépendance ni modifier l'API de stockage. Le test DynamoDB Local démontre que l'ajout concurrent invalide toute la révocation préparée, puis que le rejeu HTTP ne décrémente pas deux fois le quota. La vérification ELF et les imports du bundle démontrent la concordance d'architecture sans la déduire de la réussite de la synthèse.
+
+### Vérifications
+
+- Quatre régressions de contrôle échouent avant correction puis passent après correction. `KOYORI_INTEGRATION=1 uv run --no-sync pytest -q --junitxml=artifacts/all-tests.xml` : **71 tests passés, aucune exclusion**. Ruff et contrôle de format : succès ; avertissement Starlette/httpx déjà décrit en JRN-007.
+- Build Lambda avec `DOCKER_DEFAULT_PLATFORM=linux/arm64` : succès. Trois bibliothèques `.so` vérifiées ELF x86_64 ; imports de cryptography, pydantic-core et cffi réussis dans le conteneur x86_64.
+- Synthèse CDK : code 0, puis cinq tests d'infrastructure réussis, dont architecture x86_64. Image Docker reconstruite et services recréés ; `scripts/verify_local.py` : **PASS**. `scripts/record_evidence.py` confirme la concordance des sources embarquées et actualise les empreintes et résultats.
+- Dépendances et lock inchangés : audit de JRN-007 conservé, non réexécuté. Aucun essai sur hôte ARM64 physique ni sur Lambda déployée ; aucune nouvelle note de revue indépendante.
+- Les deux contrôles GitHub du commit précédent `4a63a3a` sont réussis. Le résultat de la CI du correctif doit être consulté après publication ; aucun succès distant de ce correctif n'est anticipé.
+
+### Retour sur les outils
+
+`senior-code-basics`, Git, PowerShell, uv, pytest, Ruff et apply_patch : inspection et correction ciblées ; retours inchangés depuis JRN-008. `web.run` : documentations officielles AWS/Docker accessibles. Docker et CDK : bundle, architecture, récupération et template effectivement vérifiés. GitHub CLI : PR et CI précédentes inspectées, édition REST réussie après la friction ci-dessus ; PR attachée à la conversation. Réutilisation de ces outils retenue avec ce contournement pour la description. Aucun compte AWS contacté ni déploiement réalisé ; services locaux seuls actifs.
+
+### Suite
+
+Consulter la CI du correctif et les nouveaux retours de la PR avant fusion. Les mêmes limites de qualification AWS et de contribution Open Source complémentaire demeurent ; aucune fusion réalisée. Les traces de revue antérieures restent historiques, distinctes des deux corrections présentes.
