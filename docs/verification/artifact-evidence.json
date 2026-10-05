@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0",
+  "dateEuropeParis": "2026-10-05T04:26:42.134241+02:00",
+  "scope": "local-complete-and-aws-preparation",
+  "sourceSha256": "47056365fd20371e8ac97fbc314b78d5bfe0bb481a49fd989e81774982433f4a",
+  "lockSha256": "98b582d33ced5f31a45141a7764016b98cbca4284413552f4062a34960622676",
+  "lambdaBundleSha256": "7a058006133b13d7183410261ada21372641950c2172ef6690aa9a0cdc77d9fa",
+  "templateSha256": "1046542c95baf16ac32cce148a5d4bac5d551abcbab777632be116ae89cef2f1",
+  "runtimeImageId": "sha256:22e1c839ada3084a098d12f2ca6fd31ec1cc37ca34149fb6a946ad37554b0aec",
+  "pytest": {
+    "tests": 65,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "dockerRecovery": {
+    "acceptedBeforeInterruption": true,
+    "liveWorkerKilledAfterCommittedCheckpoint": true,
+    "storageAndApiRestartPreservedTask": true,
+    "idempotentReplaySameTask": true,
+    "crossHouseholdDenied": true,
+    "sameTaskCompletedAfterLeaseRecovery": true,
+    "durableActivityObserved": true
+  },
+  "runtimeDependencyAudit": "no known vulnerabilities found",
+  "awsDeployedOrQualified": false,
+  "githubWorkflowExecuted": false
+}

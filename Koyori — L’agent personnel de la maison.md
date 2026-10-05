@@ -291,6 +291,8 @@ La viabilité dépend du coût de la voix, du raisonnement, des intégrations et
 
 ## 10. Les choix de mise en œuvre à confirmer
 
+**État d'implémentation au 5 octobre 2026 :** le socle du backend est développé en Python 3.12, avec API FastAPI, droits du foyer, tâches et travail durables dans DynamoDB Local, files ElasticMQ et recettes Docker. L'identité locale et l'opération de démonstration sont synthétiques. L'infrastructure Cognito, DynamoDB, EventBridge, SQS et Lambda est préparée par CDK ; elle n'est pas déployée ni qualifiée sur AWS. Le [manifeste de livraison](docs/delivery-manifest.md) et les [preuves](docs/verification/stage1.md) distinguent ces états. La mémoire, les connecteurs, les modèles, la coordination, MCP et la voix restent les étapes suivantes ; la vision et la stratégie Alexa+ restent conservées.
+
 **L’expérience cible reste un système autonome accessible sous Alexa.** La première investigation technique doit établir jusqu’où les interfaces Amazon permettent cette continuité : contexte disponible, actions autorisées, suivi en arrière-plan et restitution vocale.
 
 Amazon documente des intégrations par API et MCP pour des partenaires sélectionnés. La documentation du Category SDK mentionne les États-Unis. Ces éléments ne suffisent pas à confirmer l’accès au projet, l’intégration générale envisagée ou sa disponibilité en France. [Alexa+ for Builders](https://developer.amazon.com/alexaplus) · [Category SDK](https://www.developer.amazon.com/docs/alexaplus/add-ons/overview-category-sdk.html)
@@ -307,7 +309,7 @@ Dots, Grok Bot, ChatGPT et Hermes sont des références de conception. Leur pré
 
 *Vérification du 4 octobre 2026 — [Build, Ship, Shape](https://amazonappdev2026.devpost.com/).*
 
-**Stratégie retenue : piste principale Alexa+ et participation visée aux deux mini-défis AWS Builder et Open Source.** Koyori reste à l’état de concept dans ce dossier : chaque catégorie devra être justifiée par les réalisations et preuves correspondantes. L’inscription et l’admissibilité ne sont pas encore acquises.
+**Stratégie retenue : piste principale Alexa+ et participation visée aux deux mini-défis AWS Builder et Open Source.** Le socle local est désormais implémenté ; chaque catégorie devra être justifiée par les réalisations et preuves correspondantes. L'inscription est déclarée effectuée par l'utilisateur (JRN-004) ; l'admissibilité individuelle et la soumission restent à confirmer.
 
 ### Les catégories adaptées à Koyori
 
@@ -339,7 +341,7 @@ La clôture est fixée au **23 octobre 2026 à 21 h, heure de Paris** — 12 h P
 
 L’éligibilité personnelle reste à confirmer : majorité, résidence admissible et absence des liens exclus avec l’organisation. La France n’apparaît pas parmi les territoires explicitement exclus. [Règlement](https://amazonappdev2026.devpost.com/rules)
 
-**Prochaine étape proposée :** choisir le parcours de démonstration, vérifier les accès techniques puis développer la preuve de concept. L’inscription et la soumission ne sont pas effectuées à ce stade.
+**Prochaine étape proposée :** après validation du socle local, développer mémoire et connecteurs contrôlés, puis qualifier les accès AWS et les parcours de démonstration. L'inscription est déclarée effectuée ; aucune soumission n'est constatée à ce stade.
 
 ---
 

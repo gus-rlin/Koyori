@@ -41,10 +41,10 @@ Mutations : `Idempotency-Key` ; amendements et suppressions : `If-Match`. Expans
 
 ## Durabilité
 
-- Commande acceptée = tâche, décision, idempotence et outbox atomiquement enregistrées. Ne pas compter sur les dix minutes du jeton d'idempotence DynamoDB.
+- Commande acceptée = tâche, décision, idempotence, outbox et intention d'exécution atomiquement enregistrées. Chaque transition vers `READY` persiste aussi son intention ; pause et annulation la clôturent. Ne pas compter sur les dix minutes du jeton d'idempotence DynamoDB.
 - `synthetic.checkpoint` conserve deux marqueurs internes déterministes et un résultat marqué synthétique. Le label décrit la tâche et n'est pas une action externe.
 - Les transitions conservent leur outbox. Les entrées pending ne disparaissent pas par TTL.
-- Les consommateurs enregistrent inbox et transition avant acquittement. Les messages vieux ou de major incompatible sont traités explicitement ; ils ne régressent jamais l'état canonique.
+- Les consommateurs enregistrent inbox et transition avant acquittement. Un réveil au-delà de quatorze jours ne rejoue pas sa mutation : il réconcilie l'intention depuis la tâche canonique, respecte le bail actuel et revalide l'autorité à l'exécution. Un major incompatible est refusé ; aucun message ne réouvre une tâche suspendue ou terminale.
 - Les intentions d'exécution sont durables. Un réveil pendant un run incrémente `wakeSeq` ; la libération ou réparation enregistre le run suivant si nécessaire.
 - Une écriture de worker exige révision, `runEpoch` et propriétaire du bail actuels. Une pause, annulation ou reprise concurrente clôt l'autorité du run ancien.
 - Les terminalisations décrémentent atomiquement le nombre de tâches actives ; la limite vaut 32 par foyer par défaut. Le dernier administrateur et la limite de huit membres sont protégés par la version du foyer.
@@ -63,4 +63,4 @@ Mutations : `Idempotency-Key` ; amendements et suppressions : `If-Match`. Expans
 
 Chaque chantier remet commit, branche, worktree, commandes effectivement exécutées, résultats, limitations et observations utiles au journal. L'orchestrateur est seul rédacteur de `JOURNAL.md`. Les preuves finales sont dans `docs/verification` ; les autres documents restent au chantier documentation.
 
-Tests indépendants après intégration ; revue Sol en lecture seule après ces tests. PASS exige au moins 8/10 sans constat critique ou élevé restant. Une modification substantielle invalide la revue précédente.
+Mise à jour du 2026-10-05 à la dernière demande de l'utilisateur : implémentation seule par l'agent principal et sous-agent de revue en lecture seule à la fin. PASS exige **au moins 9/10**, sans constat critique ou élevé restant. Une modification substantielle invalide la revue précédente. Les instructions de chantiers parallèles plus haut décrivent l'organisation antérieure et sont remplacées par cette décision.
