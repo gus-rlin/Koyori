@@ -16,7 +16,7 @@ from koyori.store import DynamoStore, put
 
 def export_local(store: DynamoStore, path: Path) -> dict:
     tables = {}
-    for table in ("Domain", "Delivery", "Sessions"):
+    for table in ("Domain", "Delivery", "Sessions", "Connections"):
         items, after = [], None
         while True:
             args = dict(TableName=store.name(table), ConsistentRead=True, Limit=100)
@@ -53,7 +53,10 @@ def restore_local(store: DynamoStore, path: Path) -> dict:
     ):
         raise ValueError("Restore requires a new local table namespace")
     tables = snapshot["tables"]
-    if set(tables) != {"Domain", "Delivery", "Sessions"}:
+    if set(tables) not in (
+        {"Domain", "Delivery", "Sessions"},
+        {"Domain", "Delivery", "Sessions", "Connections"},
+    ):
         raise ValueError("Incomplete snapshot")
     data = json.dumps(tables, sort_keys=True, separators=(",", ":")).encode()
     if hashlib.sha256(data).hexdigest() != snapshot["sha256"]:

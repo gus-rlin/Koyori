@@ -51,6 +51,7 @@ class Store(Protocol):
         after: dict | None = None,
         limit: int = 50,
         index: str | None = None,
+        descending: bool = False,
     ) -> tuple[list[dict], dict | None]: ...
     def transact(self, changes: list[Change]) -> None: ...
 
@@ -110,6 +111,7 @@ class DynamoStore:
         after: dict | None = None,
         limit: int = 50,
         index: str | None = None,
+        descending: bool = False,
     ) -> tuple[list[dict], dict | None]:
         pk_name, sk_name = (f"{index}PK", f"{index}SK") if index else ("PK", "SK")
         args = dict(
@@ -119,6 +121,7 @@ class DynamoStore:
             ExpressionAttributeValues=self.encode({":pk": pk}),
             Limit=limit,
             ConsistentRead=index is None,
+            ScanIndexForward=not descending,
         )
         if prefix:
             args["KeyConditionExpression"] += " AND begins_with(#sk, :prefix)"
@@ -146,7 +149,7 @@ class DynamoStore:
                     ExpressionAttributeValues=self.encode({":revision": change.expected}),
                 )
             if change.item is not None:
-                if len(json.dumps(change.item).encode()) > 32768:
+                if len(json.dumps(change.item, ensure_ascii=False).encode()) > 32768:
                     raise ValueError("Item exceeds application bound")
                 args["Item"] = self.encode(change.item)
                 operations.append({"Put": args})
@@ -168,7 +171,7 @@ class DynamoStore:
 
     def create_tables(self) -> None:
         """Local bootstrap only; production tables are provisioned by IaC."""
-        for table in ("Domain", "Delivery", "Sessions"):
+        for table in ("Domain", "Delivery", "Sessions", "Connections"):
             try:
                 self.client.create_table(
                     TableName=self.name(table),
@@ -218,6 +221,7 @@ class MemoryStore:
         after: dict | None = None,
         limit: int = 50,
         index: str | None = None,
+        descending: bool = False,
     ) -> tuple[list[dict], dict | None]:
         pk_name, sk_name = (f"{index}PK", f"{index}SK") if index else ("PK", "SK")
         with self.lock:
@@ -228,12 +232,18 @@ class MemoryStore:
                     if t == table and v.get(pk_name) == pk and v.get(sk_name, "").startswith(prefix)
                 ),
                 key=lambda r: (r[sk_name], r["PK"], r["SK"]),
+                reverse=descending,
             )
             if after:
                 rows = [
                     r
                     for r in rows
-                    if (r[sk_name], r["PK"], r["SK"]) > (after[sk_name], after["PK"], after["SK"])
+                    if (
+                        (r[sk_name], r["PK"], r["SK"]) < (after[sk_name], after["PK"], after["SK"])
+                        if descending
+                        else (r[sk_name], r["PK"], r["SK"])
+                        > (after[sk_name], after["PK"], after["SK"])
+                    )
                 ]
             page = rows[:limit]
             last = (

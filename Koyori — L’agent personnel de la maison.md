@@ -291,7 +291,7 @@ La viabilité dépend du coût de la voix, du raisonnement, des intégrations et
 
 ## 10. Les choix de mise en œuvre à confirmer
 
-**État d'implémentation au 5 octobre 2026 :** le socle du backend est développé en Python 3.12, avec API FastAPI, droits du foyer, tâches et travail durables dans DynamoDB Local, files ElasticMQ et recettes Docker. L'identité locale et l'opération de démonstration sont synthétiques. L'infrastructure Cognito, DynamoDB, EventBridge, SQS et Lambda est préparée par CDK ; elle n'est pas déployée ni qualifiée sur AWS. Le [manifeste de livraison](docs/delivery-manifest.md) et les [preuves](docs/verification/stage1.md) distinguent ces états. La mémoire, les connecteurs, les modèles, la coordination, MCP et la voix restent les étapes suivantes ; la vision et la stratégie Alexa+ restent conservées.
+**État d'implémentation au 5 octobre 2026 :** les parties 1 et 2 du backend sont développées en Python 3.12 : API FastAPI, droits du foyer, tâches durables, mémoire sourcée et actions explicites avec budgets/approbations. Les recettes utilisent DynamoDB Local, ElasticMQ, une identité synthétique et un fournisseur commercial simulé. Google Calendar OAuth et Titan/S3 Vectors sont codés et testés par contrats ; leurs accès réels restent à qualifier. L'infrastructure AWS est préparée par CDK, sans déploiement ni qualification distante. Le [manifeste](docs/delivery-manifest.md), les preuves [du socle](docs/verification/stage1.md) et [de l'étape 2](docs/verification/stage2.md) distinguent ces états. Coordination autonome, apprentissage inféré, MCP et voix restent les étapes suivantes ; la vision et la stratégie Alexa+ sont conservées.
 
 **L’expérience cible reste un système autonome accessible sous Alexa.** La première investigation technique doit établir jusqu’où les interfaces Amazon permettent cette continuité : contexte disponible, actions autorisées, suivi en arrière-plan et restitution vocale.
 
@@ -341,7 +341,7 @@ La clôture est fixée au **23 octobre 2026 à 21 h, heure de Paris** — 12 h P
 
 L’éligibilité personnelle reste à confirmer : majorité, résidence admissible et absence des liens exclus avec l’organisation. La France n’apparaît pas parmi les territoires explicitement exclus. [Règlement](https://amazonappdev2026.devpost.com/rules)
 
-**Prochaine étape proposée :** après validation du socle local, développer mémoire et connecteurs contrôlés, puis qualifier les accès AWS et les parcours de démonstration. L'inscription est déclarée effectuée ; aucune soumission n'est constatée à ce stade.
+**Avancement de la seconde partie au 5 octobre 2026 :** mémoire sourcée, contexte, préférences/procédures révisables, budgets, approbations et actions explicites sont codés. Le fournisseur de courses/repas reste un simulateur persistant, identifié jusque dans les reçus. Les adaptateurs Google Calendar OAuth et Titan/S3 Vectors sont implémentés, avec tests de contrat ; leurs accès réels ne sont pas qualifiés. Les données métier restent dans le socle transactionnel et une table `Connections` distincte protège les enveloppes OAuth. Les [contrats de l'étape 2](docs/stage2.md), [preuves](docs/verification/stage2.md) et JRN-013 détaillent les validations et limites. La coordination autonome, l'apprentissage inféré, la voix et MCP restent à construire. L'inscription est déclarée effectuée ; aucune soumission n'est constatée à ce stade.
 
 ---
 

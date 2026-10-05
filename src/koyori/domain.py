@@ -151,7 +151,14 @@ class Domain:
         return task, [guard("Domain", value) for value in (task, delegation, owner)]
 
     def event(
-        self, ctx: Context, aggregate: str, version: int, *, wake: bool = False, kind: str = "task"
+        self,
+        ctx: Context,
+        aggregate: str,
+        version: int,
+        *,
+        wake: bool = False,
+        kind: str = "task",
+        mode: str = "sandbox",
     ) -> Change:
         eid = uid()
         shard = int(hashlib.sha256(eid.encode()).hexdigest(), 16) % self.settings.shards
@@ -164,7 +171,7 @@ class Domain:
             actorId=ctx.actor,
             aggregateId=aggregate,
             aggregateVersion=version,
-            mode="sandbox",
+            mode=mode,
             wake=wake,
         )
         return put(

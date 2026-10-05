@@ -16,7 +16,7 @@ def resources():
 
 def test_tables_have_encryption_recovery_retention_and_bounded_indexes(resources):
     tables = [v for v in resources.values() if v["Type"] == "AWS::DynamoDB::Table"]
-    assert len(tables) == 3
+    assert len(tables) == 4
     for table in tables:
         properties = table["Properties"]
         assert properties["BillingMode"] == "PAY_PER_REQUEST"
@@ -31,11 +31,18 @@ def test_lambda_separation_limits_partial_failure_and_identity(resources):
     functions = [
         v["Properties"] for v in resources.values() if v["Type"] == "AWS::Lambda::Function"
     ]
-    assert len(functions) == 5
+    assert len(functions) == 7
     for fn in functions:
         assert fn["Runtime"] == "python3.12"
         assert fn.get("Architectures", ["x86_64"]) == ["x86_64"]
-        assert fn["Timeout"] == 30
+        expected_timeout = (
+            180
+            if fn["Handler"].endswith(".connectors")
+            else 60
+            if fn["Handler"].endswith((".projections", "lambda_handler.handler"))
+            else 30
+        )
+        assert fn["Timeout"] == expected_timeout
         assert fn["ReservedConcurrentExecutions"] == 4
         assert fn["TracingConfig"]["Mode"] == "Active"
         environment = fn["Environment"]["Variables"]
@@ -127,3 +134,30 @@ def test_managed_identity_uses_code_flow_and_mfa(resources):
     }
     assert domain_id in branding["DependsOn"]
     assert any(v["Type"] == "AWS::Backup::BackupPlan" for v in resources.values())
+
+
+def test_stage2_vectors_and_credential_role_separation(resources):
+    index = next(v for v in resources.values() if v["Type"] == "AWS::S3Vectors::Index")
+    assert index["Properties"]["Dimension"] == 512
+    assert index["Properties"]["DistanceMetric"] == "cosine"
+    assert index["DeletionPolicy"] == "Retain"
+    assert any(
+        v["Type"] == "AWS::KMS::Key" and v["Properties"]["EnableKeyRotation"]
+        for v in resources.values()
+    )
+    policies = {
+        p["Properties"]["Roles"][0]["Ref"]: p["Properties"]["PolicyDocument"]["Statement"]
+        for p in resources.values()
+        if p["Type"] == "AWS::IAM::Policy" and len(p["Properties"].get("Roles", [])) == 1
+    }
+    for fn in (v["Properties"] for v in resources.values() if v["Type"] == "AWS::Lambda::Function"):
+        role = fn["Role"]["Fn::GetAtt"][0]
+        actions = {
+            a
+            for s in policies[role]
+            for a in (s["Action"] if isinstance(s["Action"], list) else [s["Action"]])
+        }
+        if fn["Handler"].endswith(".projections"):
+            assert "s3vectors:PutVectors" in actions and "kms:Decrypt" not in actions
+        if fn["Handler"].endswith((".consume", ".repair", ".project_activity", ".publish")):
+            assert not any(a.startswith(("kms:", "bedrock:", "s3vectors:")) for a in actions)

@@ -32,12 +32,41 @@ class Settings:
     max_tasks: int = 32
     max_members: int = 8
     shards: int = 4
+    semantic_mode: str = "disabled"
+    vector_bucket: str | None = None
+    vector_index: str = "memory-v1"
+    google_client_id: str | None = None
+    google_client_secret_arn: str | None = None
+    google_config_file: str | None = None
+    google_redirect_uri: str | None = None
+    google_webhook_url: str | None = None
+    token_key_arn: str | None = None
+    token_key_file: str = ".local/oauth-envelope.key"
+    embedding_daily_limit: int = 200
 
     def __post_init__(self):
         if self.env not in {"local", "dev", "prod"}:
             raise ValueError("Unsupported KOYORI_ENV")
         if not 1 <= self.shards <= 16 or not 5 <= self.lease_seconds <= 300:
             raise ValueError("Invalid operational limits")
+        if self.semantic_mode not in {"disabled", "simulated", "aws"}:
+            raise ValueError("Invalid semantic mode")
+        if not 1 <= self.embedding_daily_limit <= 10000:
+            raise ValueError("Invalid embedding call ceiling")
+        if self.semantic_mode == "aws" and (self.env == "local" or not self.vector_bucket):
+            raise ValueError("AWS semantic search requires an AWS environment and vector bucket")
+        if self.env != "local" and self.semantic_mode == "simulated":
+            raise ValueError("Simulated embedding is local only")
+        if self.google_redirect_uri:
+            redirect = urlparse(self.google_redirect_uri)
+            if redirect.scheme != "https" and not (
+                self.env == "local"
+                and redirect.scheme == "http"
+                and redirect.hostname in {"127.0.0.1", "localhost"}
+            ):
+                raise ValueError("Google callback requires HTTPS or local loopback")
+        if self.google_webhook_url and urlparse(self.google_webhook_url).scheme != "https":
+            raise ValueError("Google push requires HTTPS")
         if self.env != "local":
             host = urlparse(self.issuer)
             if self.ddb_endpoint or self.sqs_endpoint or self.client_id == "koyori-synthetic":
@@ -70,6 +99,17 @@ class Settings:
             bus_name=os.getenv("KOYORI_EVENT_BUS"),
             workflow_url=os.getenv("KOYORI_WORKFLOW_QUEUE_URL"),
             activity_url=os.getenv("KOYORI_ACTIVITY_QUEUE_URL"),
+            semantic_mode=os.getenv("KOYORI_SEMANTIC_MODE", "simulated" if local else "disabled"),
+            vector_bucket=os.getenv("KOYORI_VECTOR_BUCKET"),
+            vector_index=os.getenv("KOYORI_VECTOR_INDEX", "memory-v1"),
+            google_client_id=os.getenv("KOYORI_GOOGLE_CLIENT_ID"),
+            google_client_secret_arn=os.getenv("KOYORI_GOOGLE_CLIENT_SECRET_ARN"),
+            google_config_file=os.getenv("KOYORI_GOOGLE_CONFIG_FILE") if local else None,
+            google_redirect_uri=os.getenv("KOYORI_GOOGLE_REDIRECT_URI"),
+            google_webhook_url=os.getenv("KOYORI_GOOGLE_WEBHOOK_URL"),
+            token_key_arn=os.getenv("KOYORI_TOKEN_KEY_ARN"),
+            token_key_file=os.getenv("KOYORI_TOKEN_KEY_FILE", ".local/oauth-envelope.key"),
+            embedding_daily_limit=int(os.getenv("KOYORI_EMBEDDING_DAILY_LIMIT", "200")),
         )
 
     def client(self, service: str):
@@ -80,7 +120,13 @@ class Settings:
             if service == "sqs"
             else None
         )
-        kwargs = {"region_name": self.region, "config": SDK_CONFIG}
+        # Every billed model attempt needs its own durable quota reservation.
+        config = (
+            SDK_CONFIG.merge(Config(retries={"mode": "standard", "total_max_attempts": 1}))
+            if service == "bedrock-runtime"
+            else SDK_CONFIG
+        )
+        kwargs = {"region_name": self.region, "config": config}
         if self.env == "local":
             kwargs.update(aws_access_key_id="local", aws_secret_access_key="local")
         return boto3.client(service, endpoint_url=endpoint, **kwargs)
