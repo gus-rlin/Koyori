@@ -1,6 +1,6 @@
-name: koyori
+name: ${COMPOSE_PROJECT_NAME:-koyori}
 x-runtime: &runtime
-  image: koyori-stage1:local
+  image: ${KOYORI_RUNTIME_IMAGE:-koyori-stage1:local}
   build: .
   init: true
   read_only: true
@@ -19,6 +19,7 @@ x-runtime: &runtime
     KOYORI_ISSUER_DIR: /state/issuer
     KOYORI_TOKEN_KEY_FILE: /state/provider/envelope.key
     KOYORI_SEMANTIC_MODE: simulated
+    KOYORI_PLANNING_MODE: simulated
   depends_on:
     bootstrap: {condition: service_completed_successfully}
   restart: unless-stopped
@@ -29,14 +30,14 @@ services:
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
     user: "0:0"
     volumes: ["dynamodb-data:/home/dynamodblocal/data"]
-    ports: ["127.0.0.1:8800:8000"]
+    ports: ["127.0.0.1:${KOYORI_DDB_PORT:-8800}:8000"]
     restart: unless-stopped
   elasticmq:
     image: softwaremill/elasticmq-native:1.7.1@sha256:e4580ab9ad1bd5cd37b4ba04911bc5ccc8cd2d9ab4de56ece65acee71c24e05c
     volumes:
       - ./local/elasticmq.conf:/opt/elasticmq.conf:ro
       - elasticmq-data:/data
-    ports: ["127.0.0.1:9324:9324"]
+    ports: ["127.0.0.1:${KOYORI_SQS_PORT:-9324}:9324"]
     restart: unless-stopped
   key-permissions:
     image: python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
@@ -80,6 +81,15 @@ services:
   projection:
     <<: *runtime
     command: ["python", "-m", "koyori.workers.cli", "projection"]
+  coordinator:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "coordinator"]
+  scheduler:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "scheduler"]
+  notifications:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "notifications"]
   demo:
     <<: *runtime
     profiles: ["tools"]

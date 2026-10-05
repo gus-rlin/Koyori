@@ -47,7 +47,11 @@ class Engine:
                 task = self.store.get(
                     "Domain", (hkey(event.householdId), f"TASK#{event.aggregateId}")
                 )
-                if task and task["status"] not in TERMINAL | {"PAUSED"}:
+                if (
+                    task
+                    and task.get("operation") != "coordination.goal"
+                    and task["status"] not in TERMINAL | {"PAUSED"}
+                ):
                     if event.aggregateVersion > task["rev"]:
                         raise ValueError("Event references a future aggregate revision")
                     intent = self.store.get("Delivery", self.run_key(task["id"]))
@@ -183,6 +187,7 @@ class Engine:
             intent = self.store.get("Delivery", self.run_key(tid))
             if (
                 not task
+                or task.get("operation") == "coordination.goal"
                 or not intent
                 or intent["status"] != "PENDING"
                 or intent["dueAt"] > self.domain.now()

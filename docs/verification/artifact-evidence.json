@@ -1,14 +1,14 @@
 {
   "schemaVersion": "1.0",
-  "dateEuropeParis": "2026-10-06T00:12:28.740076+02:00",
-  "scope": "stages-one-and-two-local-and-aws-preparation",
-  "sourceSha256": "1adbd296685194580166ad3569a31f95b28eb4b88903dba4365e8ee7e339ae86",
-  "lockSha256": "ff1acaf8f25a7cd060c19c66a01404d62d70cbb73e2d6f5f86a5c0ce4fc652c1",
-  "lambdaBundleSha256": "785cb28de6096dd68b302eba1bced64c7e8ce842193135fafc9488c9e5c3b166",
-  "templateSha256": "7cf28f2cb3ff1a8580e3e5318a9917acfd63479b1e1e10d91496cb35dd611360",
-  "runtimeImageId": "sha256:b38fbf2358cb837a94e9b9886cd8750b1814c596c452701f7ade2f72de6e37de",
+  "dateEuropeParis": "2026-10-06T01:31:06.027488+02:00",
+  "scope": "stages-one-two-three-local-and-aws-preparation",
+  "sourceSha256": "e3ee48b93f552dd6500a87ab0b0ffd6b7be980eb8318122bb1548adde4d967d1",
+  "lockSha256": "9dc0cfdeeb4b7b543af8341c6f4cf94b199d679255cccabe0bb3171afcff4fae",
+  "lambdaBundleSha256": "6abf9c428826f8af8b404362398f5cd52f68c8d185a0a3eb31505d855bc2ac22",
+  "templateSha256": "48d2ab0450f5db8e4c700edb4e6abe7db3936acc66cbde24c4892a8c3ac7b77e",
+  "runtimeImageId": "sha256:46bc5fecbcff75d372512350fe7f6c14140c8586ff2731b866d900af6b22486d",
   "pytest": {
-    "tests": 135,
+    "tests": 205,
     "failures": 0,
     "errors": 0,
     "skipped": 0
@@ -31,6 +31,20 @@
     "idempotentReplaySameAction": true,
     "sameProviderOperationReconciled": true
   },
+  "stage3Recovery": {
+    "liveProcessKilledAfterCommittedPlan": true,
+    "storageAndApiRestartPreservedPlan": true,
+    "idempotentGoalReplay": true,
+    "ownerIsolation": true,
+    "waitWithoutAdditionalModelCall": true,
+    "pauseResumeWithFreshPlan": true,
+    "acceptedPreferenceUsedInQuote": true,
+    "amendSamePurchaseForFour": true,
+    "providerCancellationReceiptRequired": true,
+    "oneRoutineOccurrenceAfterRepeatedWake": true,
+    "groupedNotificationFeed": true
+  },
+  "liveNovaQualified": false,
   "googleQualified": false,
   "bedrockAndVectorsQualified": false,
   "runtimeDependencyAudit": "no known vulnerabilities found",

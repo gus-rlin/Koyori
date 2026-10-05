@@ -27,7 +27,11 @@ def dynamo(tmp_path, monkeypatch):
         pytest.skip("Set KOYORI_INTEGRATION=1 after starting local DynamoDB and ElasticMQ")
     monkeypatch.setenv("KOYORI_ISSUER_DIR", str(tmp_path / "issuer"))
     settings = replace(
-        Settings(), prefix=f"KoyoriTest{uuid4().hex}", key_dir=str(tmp_path / "keys")
+        Settings(),
+        prefix=f"KoyoriTest{uuid4().hex}",
+        key_dir=str(tmp_path / "keys"),
+        ddb_endpoint=os.getenv("KOYORI_TEST_DDB_ENDPOINT", "http://127.0.0.1:8800"),
+        sqs_endpoint=os.getenv("KOYORI_TEST_SQS_ENDPOINT", "http://127.0.0.1:9324"),
     )
     provider_key = tmp_path / "provider.key"
     provider_key.write_bytes(b"k" * 32)

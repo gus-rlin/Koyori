@@ -1,8 +1,8 @@
-# Koyori — socle, mémoire et connecteurs contrôlés
+# Koyori — coordination durable de la maison
 
 Le socle exécute une commande synthétique durable, avec identité signée, autorisations par objet, transactions, reprise après crash et activité persistante. Le même code Python sert l'API HTTP, les workers locaux et les handlers Lambda.
 
-**Périmètre livré : parties 1 et 2, local Docker et préparation AWS.** Mémoire sourcée, contexte, devis, approbations, budgets et registre d'actions fonctionnent par commandes explicites ; le commerce est simulé jusqu'aux reçus. Google Calendar OAuth et Titan/S3 Vectors sont codés avec tests de contrat ; leurs accès réels restent à qualifier. Identité locale synthétique, DynamoDB Local et ElasticMQ émulés. Aucun achat réel ni appel réel à un modèle n'est effectué. Coordination, voix et MCP restent aux parties suivantes.
+**Périmètre codé : parties 1, 2 et 3, local Docker et préparation AWS.** Objectifs naturels, plans validés, dépendances, échéances, routines, modifications, apprentissage sourcé et notifications réutilisent mémoire, devis, approbations, budgets et reçus. Le planificateur et le commerce des recettes sont explicitement simulés. Strands/Nova, Google Calendar OAuth et Titan/S3 Vectors sont branchés avec tests de contrat ; leurs accès réels restent à qualifier. Identité locale synthétique, DynamoDB Local et ElasticMQ émulés. Aucun achat réel ni appel distant à un modèle n'est effectué. Voix et MCP restent à l'étape 4.
 
 ## Démarrer
 
@@ -39,6 +39,7 @@ uv run ruff check src tests scripts infrastructure
 uv run ruff format --check src tests scripts infrastructure
 uv run python scripts/verify_local.py
 uv run python scripts/verify_stage2.py
+uv run python scripts/verify_stage3.py
 ```
 
 La recette Docker tue un worker vivant après le premier checkpoint, redémarre stockage et API, rejoue la commande et vérifie la fin de la même tâche. Elle arrête temporairement les services de ce projet, puis les redémarre. Sans `KOYORI_INTEGRATION=1`, les tests des émulateurs sont explicitement ignorés. Les assertions AWS exigent d'abord la construction et la synthèse ci-dessous.
@@ -52,7 +53,11 @@ uv run pytest -q tests/test_infrastructure.py
 uv run pip-audit --path artifacts/lambda --format cyclonedx-json --output artifacts/runtime-sbom.json
 ```
 
-Le bundle Lambda contient les roues Linux verrouillées. CDK synthétise Cognito, quatre tables DynamoDB, EventBridge, deux files avec DLQ, sept Lambda, KMS, S3 Vectors, API Gateway, alarmes, PITR et sauvegardes quotidiennes. Aucun compte n'est contacté ni déploiement exécuté. Le callback Cognito `example.invalid`, le client/secret Google et les accès aux modèles doivent être configurés avant qualification distante. Aucun coût AWS observé ; aucune ressource distante créée.
+Le bundle Lambda contient les roues Linux verrouillées. CDK synthétise Cognito, quatre tables DynamoDB, EventBridge, deux files avec DLQ, onze Lambda, Step Functions Standard, EventBridge Scheduler, KMS, S3 Vectors, API Gateway, alarmes, PITR et sauvegardes quotidiennes. Aucun déploiement exécuté. Le callback Cognito `example.invalid`, le client/secret Google et les accès aux modèles doivent être configurés avant qualification distante. Le profil Nova US nécessite une décision de région/consentement avant données personnelles. Aucun coût AWS observé ; aucune ressource distante créée.
+
+La qualification Nova utilise `uv run python scripts/qualify_planner.py --live` sur des fixtures synthétiques uniquement, jusqu'à seize requêtes facturables. Sans accès AWS, le rapport indique `NOT_RUN`. Les [contrats de coordination](docs/stage3.md) détaillent limites, résultats et reprise.
+
+Pour une stack indépendante, définir `COMPOSE_PROJECT_NAME`, `KOYORI_RUNTIME_IMAGE`, `KOYORI_API_PORT`, `KOYORI_DDB_PORT`, `KOYORI_SQS_PORT` et `KOYORI_DOCKER_SUBNET` avant les commandes Compose et les recettes. Les tests hôte utilisent aussi `KOYORI_TEST_DDB_ENDPOINT` et `KOYORI_TEST_SQS_ENDPOINT`. Le bundle peut utiliser uv de l'image verrouillée déjà construite : `uv run python scripts/build_lambda.py --runtime-image NOM_IMAGE`. Les dépendances restent vérifiées par hash et TLS.
 
 ## Documents de reprise
 
@@ -63,6 +68,8 @@ Le bundle Lambda contient les roues Linux verrouillées. CDK synthétise Cognito
 - [Vérifications de l'étape 1](docs/verification/stage1.md)
 - [Contrats et configuration de l'étape 2](docs/stage2.md)
 - [Vérifications de l'étape 2](docs/verification/stage2.md)
+- [Coordination, routines et apprentissage — étape 3](docs/stage3.md)
+- [Vérifications de l'étape 3](docs/verification/stage3.md)
 - [Journal du développement](JOURNAL.md)
 
 La licence du dépôt est [Apache 2.0](LICENSE). Le travail local ne constitue pas une publication, une contribution complémentaire Open Source ou une qualification de l'intégration Alexa+.

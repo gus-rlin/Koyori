@@ -1,5 +1,6 @@
 """Runs only inside the builder container with the explicit artifact mount."""
 
+import os
 import shutil
 import subprocess
 import sys
@@ -17,8 +18,23 @@ if root != Path("/artifact") or any(
 if staging.exists():
     shutil.rmtree(staging)
 staging.mkdir()
-subprocess.run(
+command = (
     [
+        "uv",
+        "--system-certs",
+        "pip",
+        "install",
+        "--python",
+        sys.executable,
+        "--require-hashes",
+        "--no-deps",
+        "--target",
+        str(staging),
+        "-r",
+        str(root / "runtime-requirements.txt"),
+    ]
+    if os.getenv("KOYORI_BUILD_WITH_UV") == "1"
+    else [
         sys.executable,
         "-m",
         "pip",
@@ -36,9 +52,9 @@ subprocess.run(
         str(staging),
         "-r",
         str(root / "runtime-requirements.txt"),
-    ],
-    check=True,
+    ]
 )
+subprocess.run(command, check=True)
 shutil.copytree("/src/koyori", staging / "koyori", ignore=shutil.ignore_patterns("__pycache__"))
 if previous.exists():
     raise ValueError("Previous interrupted activation requires inspection")

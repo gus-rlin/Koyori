@@ -17,8 +17,11 @@ from aws_cdk import aws_lambda as lambdas
 from aws_cdk import aws_lambda_event_sources as sources
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3vectors as vectors
+from aws_cdk import aws_scheduler as scheduler
 from aws_cdk import aws_secretsmanager as secrets
 from aws_cdk import aws_sqs as sqs
+from aws_cdk import aws_stepfunctions as sfn
+from aws_cdk import aws_stepfunctions_tasks as sfn_tasks
 from aws_cdk.aws_apigatewayv2_integrations import HttpLambdaIntegration
 from constructs import Construct
 
@@ -222,6 +225,10 @@ class FoundationStack(cdk.Stack):
             "repair": "koyori.workers.lambda_handlers.repair",
             "connector": "koyori.workers.stage2_runtime.connectors",
             "projection": "koyori.workers.stage2_runtime.projections",
+            "coordinator": "koyori.workers.stage3_runtime.coordinate",
+            "dispatch": "koyori.workers.stage3_runtime.dispatch",
+            "scheduler": "koyori.workers.stage3_runtime.schedules",
+            "notifications": "koyori.workers.stage3_runtime.notify",
         }.items():
             group = logs.LogGroup(
                 self,
@@ -235,9 +242,16 @@ class FoundationStack(cdk.Stack):
                 runtime=lambdas.Runtime.PYTHON_3_12,
                 code=lambdas.Code.from_asset(str(code_path)),
                 handler=handler,
+                function_name=f"koyori-{stage}-scheduler" if name == "scheduler" else None,
                 environment=environment,
                 timeout=cdk.Duration.seconds(
-                    180 if name == "connector" else 60 if name in {"api", "projection"} else 30
+                    180
+                    if name == "connector"
+                    else 100
+                    if name == "coordinator"
+                    else 60
+                    if name in {"api", "projection"}
+                    else 30
                 ),
                 memory_size=256,
                 reserved_concurrent_executions=4,
@@ -250,7 +264,16 @@ class FoundationStack(cdk.Stack):
                 ("Delivery",)
                 if name == "publisher"
                 else ("Domain", "Delivery")
-                if name in {"workflow", "activity", "repair"}
+                if name
+                in {
+                    "workflow",
+                    "activity",
+                    "repair",
+                    "coordinator",
+                    "dispatch",
+                    "scheduler",
+                    "notifications",
+                }
                 else ("Domain", "Delivery", "Connections")
                 if name == "connector"
                 else ("Domain", "Delivery")
@@ -373,7 +396,116 @@ class FoundationStack(cdk.Stack):
             schedule=events.Schedule.rate(cdk.Duration.minutes(1)),
             targets=[targets.LambdaFunction(functions["repair"], retry_attempts=2)],
         )
-        for role in ("connector", "projection"):
+        coordinate_step = sfn_tasks.LambdaInvoke(
+            self,
+            "CoordinateFiniteRun",
+            lambda_function=functions["coordinator"],
+            payload_response_only=True,
+            retry_on_service_exceptions=False,
+        )
+        workflow_logs = logs.LogGroup(
+            self,
+            "CoordinationWorkflowLogs",
+            retention=logs.RetentionDays.TWO_WEEKS,
+            removal_policy=cdk.RemovalPolicy.RETAIN,
+        )
+        machine = sfn.StateMachine(
+            self,
+            "CoordinationRuns",
+            definition_body=sfn.DefinitionBody.from_chainable(coordinate_step),
+            state_machine_type=sfn.StateMachineType.STANDARD,
+            timeout=cdk.Duration.minutes(3),
+            logs=sfn.LogOptions(
+                destination=workflow_logs, include_execution_data=False, level=sfn.LogLevel.ERROR
+            ),
+            tracing_enabled=True,
+        )
+        functions["dispatch"].add_environment(
+            "KOYORI_COORDINATOR_MACHINE_ARN", machine.state_machine_arn
+        )
+        machine.grant_start_execution(functions["dispatch"])
+        functions["dispatch"].add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["states:DescribeExecution"],
+                resources=[
+                    self.format_arn(
+                        service="states",
+                        resource="execution",
+                        resource_name=machine.state_machine_name + ":*",
+                        arn_format=cdk.ArnFormat.COLON_RESOURCE_NAME,
+                    )
+                ],
+            )
+        )
+        functions["coordinator"].add_environment("KOYORI_PLANNING_MODE", "aws")
+        functions["coordinator"].add_environment("KOYORI_PLANNING_REGION", "us-east-1")
+        functions["coordinator"].add_environment(
+            "KOYORI_CALENDAR_READER_ARN", functions["connector"].function_arn
+        )
+        functions["connector"].grant_invoke(functions["coordinator"])
+        functions["coordinator"].add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    f"arn:{self.partition}:bedrock:us-east-1:{self.account}:inference-profile/us.amazon.nova-2-lite-v1:0",
+                    *[
+                        f"arn:{self.partition}:bedrock:{region}::foundation-model/amazon.nova-2-lite-v1:0"
+                        for region in ("us-east-1", "us-east-2", "us-west-2")
+                    ],
+                ],
+            )
+        )
+        schedule_group = scheduler.CfnScheduleGroup(
+            self, "WakeSchedules", name=f"koyori-{stage}-wakes"
+        )
+        schedule_role = iam.Role(
+            self,
+            "WakeSchedulerRole",
+            assumed_by=iam.ServicePrincipal(
+                "scheduler.amazonaws.com",
+                conditions={
+                    "StringEquals": {"aws:SourceAccount": self.account},
+                    "ArnEquals": {"aws:SourceArn": schedule_group.attr_arn},
+                },
+            ),
+        )
+        functions["scheduler"].grant_invoke(schedule_role)
+        schedule_fn = functions["scheduler"]
+        for key, value in {
+            "KOYORI_SCHEDULER_GROUP": schedule_group.name,
+            "KOYORI_SCHEDULER_ROLE_ARN": schedule_role.role_arn,
+            "KOYORI_SCHEDULER_TARGET_ARN": self.format_arn(
+                service="lambda",
+                resource="function",
+                resource_name=f"koyori-{stage}-scheduler",
+                arn_format=cdk.ArnFormat.COLON_RESOURCE_NAME,
+            ),
+        }.items():
+            schedule_fn.add_environment(key, value)
+        schedule_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "scheduler:CreateSchedule",
+                    "scheduler:GetSchedule",
+                    "scheduler:DeleteSchedule",
+                ],
+                resources=[
+                    self.format_arn(
+                        service="scheduler",
+                        resource="schedule",
+                        resource_name=f"koyori-{stage}-wakes/*",
+                    )
+                ],
+            )
+        )
+        schedule_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["iam:PassRole"],
+                resources=[schedule_role.role_arn],
+                conditions={"StringEquals": {"iam:PassedToService": "scheduler.amazonaws.com"}},
+            )
+        )
+        for role in ("connector", "projection", "dispatch", "scheduler", "notifications"):
             events.Rule(
                 self,
                 f"{role}Schedule",

@@ -33,6 +33,9 @@ def main():
     stage2_recovery = json.loads((ROOT / "artifacts/stage2-recovery.json").read_text())
     if stage2_recovery["result"] != "PASS":
         raise ValueError("Stage-two Docker recovery not verified")
+    stage3_recovery = json.loads((ROOT / "artifacts/stage3-recovery.json").read_text())
+    if stage3_recovery["result"] != "PASS":
+        raise ValueError("Stage-three Docker recovery not verified")
     for source in (ROOT / "src/koyori").rglob("*.py"):
         bundled = ROOT / "artifacts/lambda/koyori" / source.relative_to(ROOT / "src/koyori")
         if bundled.read_bytes() != source.read_bytes():
@@ -58,7 +61,14 @@ def main():
     if sbom.get("vulnerabilities"):
         raise ValueError("Runtime dependency findings must be resolved")
     image_id = subprocess.run(
-        ["docker", "image", "inspect", "koyori-stage1:local", "--format", "{{.Id}}"],
+        [
+            "docker",
+            "image",
+            "inspect",
+            os.getenv("KOYORI_RUNTIME_IMAGE", "koyori-stage1:local"),
+            "--format",
+            "{{.Id}}",
+        ],
         check=True,
         text=True,
         capture_output=True,
@@ -71,7 +81,7 @@ def main():
     report = {
         "schemaVersion": "1.0",
         "dateEuropeParis": datetime.now(ZoneInfo("Europe/Paris")).isoformat(),
-        "scope": "stages-one-and-two-local-and-aws-preparation",
+        "scope": "stages-one-two-three-local-and-aws-preparation",
         "sourceSha256": tree_hash(sources),
         "lockSha256": hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest(),
         "lambdaBundleSha256": tree_hash(bundle_files),
@@ -82,6 +92,8 @@ def main():
         "pytest": counts,
         "dockerRecovery": recovery["checks"],
         "stage2Recovery": stage2_recovery["checks"],
+        "stage3Recovery": stage3_recovery["checks"],
+        "liveNovaQualified": False,
         "googleQualified": False,
         "bedrockAndVectorsQualified": False,
         "runtimeDependencyAudit": "no known vulnerabilities found",

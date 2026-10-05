@@ -570,6 +570,10 @@ class Domain:
         self, ctx: Context, tid: str, body: dict, version: int, action: str
     ) -> tuple[dict, list[Change], bool]:
         task, checks = self.task_access(ctx, tid, "control")
+        if task.get("operation") == "coordination.goal":
+            raise Problem(
+                409, "GOAL_CONTROL_REQUIRED", "Use the goal control routes for coordination tasks."
+            )
         self.require_version(task, version)
         if task["status"] in TERMINAL:
             raise Problem(409, "TASK_TERMINAL", "Terminal tasks cannot be changed.")

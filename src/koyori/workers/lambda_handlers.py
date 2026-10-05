@@ -35,6 +35,9 @@ def _batch(event, *, activity=False):
                 worker.project_activity(raw)
             else:
                 worker.consume(raw)
+                from koyori.goals import Goals
+
+                Goals(worker.domain).consume(raw)
                 if raw.get("wake"):
                     worker.run(raw["householdId"], raw["aggregateId"])
         except Exception:
