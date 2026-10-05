@@ -1,0 +1,91 @@
+name: koyori
+x-runtime: &runtime
+  image: koyori-stage1:local
+  build: .
+  init: true
+  read_only: true
+  tmpfs: ["/tmp"]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  environment: &environment
+    KOYORI_ENV: local
+    AWS_REGION: eu-west-1
+    KOYORI_TABLE_PREFIX: KoyoriLocal
+    KOYORI_DDB_ENDPOINT: http://dynamodb:8000
+    KOYORI_SQS_ENDPOINT: http://elasticmq:9324
+    KOYORI_WORKFLOW_QUEUE_URL: http://elasticmq:9324/000000000000/koyori-workflow
+    KOYORI_ACTIVITY_QUEUE_URL: http://elasticmq:9324/000000000000/koyori-activity
+    KOYORI_KEY_DIR: /state/keys
+    KOYORI_ISSUER_DIR: /state/issuer
+  depends_on:
+    bootstrap: {condition: service_completed_successfully}
+  restart: unless-stopped
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.0@sha256:d89f8fcc6b1a39cb35976c248ed42a28c66ae00dc043099210f5571e42648ab4
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    user: "0:0"
+    volumes: ["dynamodb-data:/home/dynamodblocal/data"]
+    ports: ["127.0.0.1:8800:8000"]
+    restart: unless-stopped
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.7.1@sha256:e4580ab9ad1bd5cd37b4ba04911bc5ccc8cd2d9ab4de56ece65acee71c24e05c
+    volumes:
+      - ./local/elasticmq.conf:/opt/elasticmq.conf:ro
+      - elasticmq-data:/data
+    ports: ["127.0.0.1:9324:9324"]
+    restart: unless-stopped
+  key-permissions:
+    image: python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
+    user: "0:0"
+    command: ["python", "-c", "import os; [os.chown(p, 10001, 10001) for p in ('/state/keys','/state/issuer')]"]
+    volumes: ["public-keys:/state/keys", "issuer-keys:/state/issuer"]
+  bootstrap:
+    <<: *runtime
+    restart: "no"
+    depends_on:
+      dynamodb: {condition: service_started}
+      elasticmq: {condition: service_started}
+      key-permissions: {condition: service_completed_successfully}
+    command: ["python", "-m", "koyori.bootstrap"]
+    volumes: ["public-keys:/state/keys", "issuer-keys:/state/issuer"]
+  api:
+    <<: *runtime
+    ports: ["127.0.0.1:${KOYORI_API_PORT:-8088}:8080"]
+    volumes: ["public-keys:/state/keys:ro"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+  publisher:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "publisher"]
+  workflow:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "workflow"]
+  activity:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "activity"]
+  repair:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "repair"]
+  demo:
+    <<: *runtime
+    profiles: ["tools"]
+    restart: "no"
+    command: ["python", "-m", "koyori.demo", "token", "alex"]
+    volumes: ["public-keys:/state/keys:ro", "issuer-keys:/state/issuer:ro"]
+
+volumes:
+  dynamodb-data:
+  elasticmq-data:
+  public-keys:
+  issuer-keys:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${KOYORI_DOCKER_SUBNET:-10.253.42.0/24}
