@@ -79,7 +79,7 @@ def register(app, domain, actor, context):
 
     @app.patch("/v1/memories/{mid}")
     def patch_memory(mid: str, body: MemoryPatch, request: Request, ctx: Ctx):
-        normalized = body.model_dump()
+        normalized = body.model_dump(exclude_unset=True)
         version = expected_version(request.headers.get("If-Match"))
         mutation(
             memory,

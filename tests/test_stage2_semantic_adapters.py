@@ -15,6 +15,72 @@ class BedrockFixture:
         return {"body": io.BytesIO(json.dumps({"embedding": [0.1] * 512}).encode())}
 
 
+@pytest.mark.parametrize("expire_during_put", [False, True])
+def test_external_projection_schedules_natural_expiry_and_purges_without_embedding_quota(
+    harness, expire_during_put
+):
+    h = harness
+    item = memory(h, validUntil=h.clock() + 10)
+    key = (f"MEMINDEX#{item['id']}", "META")
+
+    class Vectors:
+        present = False
+
+        def put_vectors(self, **args):
+            self.present = True
+            if expire_during_put:
+                h.clock.advance(11)
+
+        def delete_vectors(self, **args):
+            assert args["keys"] == [item["id"]]
+            self.present = False
+
+    h.domain.settings = replace(h.settings, embedding_daily_limit=1)
+    vectors = Vectors()
+    service = Semantic(h.domain, bedrock=BedrockFixture(), vectors=vectors)
+    service.mode = "aws"
+    service.sweep()
+    intent = h.domain.store.get("Delivery", key)
+    assert intent["status"] == "PENDING" and intent["GSI1PK"].startswith("MEMERASE#")
+    assert intent["dueAt"] == max(h.clock(), item["validUntil"])
+    if not expire_during_put:
+        assert service.sweep() == 0
+        h.clock.advance(11)
+    restarted = Semantic(h.domain, bedrock=BedrockFixture(), vectors=vectors)
+    restarted.mode = "aws"
+    restarted.sweep()
+    assert not vectors.present
+    assert h.domain.store.get("Delivery", key)["status"] == "DONE"
+    usage = [
+        x
+        for (table, (pk, _)), x in h.domain.store.rows.items()
+        if table == "Domain" and pk.startswith(f"EMBEDUSE#{h.h}#")
+    ]
+    assert len(usage) == 1 and usage[0]["calls"] == 1
+
+
+def test_renewed_expiration_replaces_old_purge_schedule(harness):
+    h = harness
+    item = memory(h, validUntil=h.clock() + 10)
+    key = (f"MEMINDEX#{item['id']}", "META")
+    service = Semantic(h.domain)
+    service.mode = "simulated"
+    service.sweep()
+    stale = h.domain.store.get("Delivery", key)
+    response = h.client.patch(
+        f"/v1/memories/{item['id']}",
+        json={"text": "Renewed breakfast", "validUntil": h.clock() + 600},
+        headers=h.headers(version=1),
+    )
+    assert response.status_code == 200
+    service.sweep()
+    h.clock.advance(11)
+    service.project(stale)
+    current = h.domain.store.get("Delivery", key)
+    assert current["memoryRev"] == 2 and current["dueAt"] == response.json()["validUntil"]
+    assert service.search(h.domain.context("alex", h.h), "Renewed breakfast")[0]["rev"] == 2
+
+
 @pytest.mark.parametrize("remove", [False, True])
 @pytest.mark.parametrize(
     "crash,repair_before_reply", [(False, False), (True, False), (False, True)]

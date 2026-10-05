@@ -7,11 +7,67 @@ from test_stage2_semantic_adapters import BedrockFixture
 from koyori.actions import CATALOG, Actions
 from koyori.domain import hkey, row
 from koyori.errors import Conflict
+from koyori.memory import Memory
 from koyori.semantic import Semantic
-from koyori.store import put
+from koyori.stage2_contracts import MemoryWrite
+from koyori.store import put, revised
 
 pytestmark = pytest.mark.integration
 pytest_plugins = ["test_integration"]
+
+
+def test_dynamo_expired_key_replacement_guards_slot_and_canonical_record(dynamo):
+    h = dynamo
+    body = MemoryWrite(
+        kind="preference", key="dinner", text="Original", validUntil=h.clock() + 10
+    ).model_dump()
+    response = h.client.post("/v1/memories", json=body, headers=h.headers())
+    assert response.status_code == 201
+    first = response.json()
+    h.clock.advance(11)
+    service = Memory(h.domain)
+    ctx = h.domain.context("alex", h.h)
+    body["validUntil"] = None
+    replacements = [service.create(ctx, body) for _ in range(2)]
+    h.domain.store.transact(ctx.guards() + replacements[0][1])
+    with pytest.raises(Conflict):
+        h.domain.store.transact(ctx.guards() + replacements[1][1])
+    assert (
+        h.client.delete(f"/v1/memories/{first['id']}", headers=h.headers(version=1)).status_code
+        == 200
+    )
+    assert h.client.post("/v1/memories", json=body, headers=h.headers()).status_code == 409
+
+    # A canonical renewal also invalidates a prepared replacement transaction.
+    response = h.client.post(
+        "/v1/memories",
+        json={**body, "key": "breakfast", "validUntil": h.clock() + 10},
+        headers=h.headers(),
+    )
+    assert response.status_code == 201
+    h.clock.advance(11)
+    _, writes, _ = service.create(ctx, {**body, "key": "breakfast"})
+    old = h.domain.store.get("Domain", (hkey(h.h), f"MEMORY#{response.json()['id']}"))
+    h.domain.store.transact([put("Domain", revised(old, validUntil=h.clock() + 600), old)])
+    with pytest.raises(Conflict):
+        h.domain.store.transact(ctx.guards() + writes)
+
+    # Inverse race: a renewal prepared before expiry loses after slot replacement.
+    response = h.client.post(
+        "/v1/memories",
+        json={**body, "key": "tea", "validUntil": h.clock() + 10},
+        headers=h.headers(),
+    )
+    assert response.status_code == 201
+    mid = response.json()["id"]
+    _, renewal, _ = service.change(
+        ctx, mid, {"text": "Renewed tea", "validUntil": h.clock() + 600}, 1
+    )
+    h.clock.advance(11)
+    response = h.client.post("/v1/memories", json={**body, "key": "tea"}, headers=h.headers())
+    assert response.status_code == 201
+    with pytest.raises(Conflict):
+        h.domain.store.transact(ctx.guards() + renewal)
 
 
 def test_dynamo_memory_chronology_correction_and_erasure(dynamo):

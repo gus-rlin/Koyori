@@ -3,9 +3,12 @@
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from pydantic import ValidationError
+
 from koyori.domain import hkey, projection, row, uid
 from koyori.errors import Problem, missing
 from koyori.stage2 import Service
+from koyori.stage2_contracts import MemoryPatch
 from koyori.store import guard, put, revised
 
 
@@ -100,7 +103,13 @@ class Memory(Service):
             slot_key = (hkey(ctx.h), f"MEMKEY#{ctx.actor}#{item['kind']}#{item['key']}")
             slot = self.store.get("Domain", slot_key)
             if slot and not slot.get("deleted"):
-                raise Problem(409, "MEMORY_KEY_EXISTS", "Correct the existing keyed memory.")
+                prior = self.store.get("Domain", (hkey(ctx.h), f"MEMORY#{slot['memoryId']}"))
+                if not prior or not (
+                    prior["deleted"] or prior.get("validUntil") and prior["validUntil"] <= now
+                ):
+                    raise Problem(409, "MEMORY_KEY_EXISTS", "Correct the existing keyed memory.")
+                # Reusing the slot must lose to a concurrent renewal of its memory.
+                writes.append(guard("Domain", prior))
             writes.append(
                 put(
                     "Domain",
@@ -116,6 +125,14 @@ class Memory(Service):
         if old["deleted"]:
             raise Problem(409, "MEMORY_DELETED", "The memory has already been erased.")
         if not delete:
+            try:
+                body = MemoryPatch.model_validate(
+                    {k: body.get(k, old[k]) for k in ("text", "steps", "visibility", "validUntil")}
+                ).model_dump()
+            except ValidationError:
+                raise Problem(
+                    422, "INVALID_MEMORY", "Merged memory exceeds the content bounds."
+                ) from None
             if body.get("validUntil") and body["validUntil"] <= self.domain.now():
                 raise Problem(422, "INVALID_TIME", "Memory validity must be in the future.")
             if (old["kind"] == "procedure") != bool(body["steps"]):
@@ -127,6 +144,14 @@ class Memory(Service):
                 and source.get("visibility") != "household"
             ):
                 raise Problem(403, "PRIVATE_SOURCE", "The source is private.")
+            if old["key"] and old["kind"] != "exchange":
+                slot = self.store.get(
+                    "Domain", (hkey(ctx.h), f"MEMKEY#{ctx.actor}#{old['kind']}#{old['key']}")
+                )
+                if not slot or slot.get("deleted") or slot["memoryId"] != mid:
+                    raise Problem(409, "MEMORY_KEY_REPLACED", "This keyed memory was replaced.")
+                # A prepared renewal cannot revive an expired record after replacement.
+                source_checks.append(guard("Domain", slot))
         else:
             source = None
             source_checks = []
@@ -151,7 +176,7 @@ class Memory(Service):
             slot = self.store.get(
                 "Domain", (hkey(ctx.h), f"MEMKEY#{ctx.actor}#{old['kind']}#{old['key']}")
             )
-            if slot:
+            if slot and slot["memoryId"] == mid:
                 writes.append(put("Domain", revised(slot, deleted=True), slot))
         return (
             {"id": mid, "rev": new["rev"], "deleted": delete},
@@ -197,14 +222,19 @@ class Memory(Service):
             last = datetime.fromtimestamp(end - 1, UTC).date()
             partitions = [
                 (f"MEMDAY#{ctx.h}#{(first + timedelta(days=i)).isoformat()}", "")
-                for i in range((last - first).days + 1)
+                for i in reversed(range((last - first).days + 1))
             ]
         archive_truncated = False
         for pk, prefix in partitions:
             after = None
             while scanned < 500:
                 page, after = self.store.query(
-                    "Domain", pk, prefix=prefix, after=after, limit=50, descending=True
+                    "Domain",
+                    pk,
+                    prefix=prefix,
+                    after=after,
+                    limit=min(50, 500 - scanned),
+                    descending=True,
                 )
                 scanned += len(page)
                 rows.extend(page)

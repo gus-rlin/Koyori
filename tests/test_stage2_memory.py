@@ -6,11 +6,235 @@ from zoneinfo import ZoneInfo
 import pytest
 from stage2_helpers import memory
 
-from koyori.domain import hkey
+from koyori.domain import hkey, row
+from koyori.errors import Conflict
 from koyori.memory import Memory
 from koyori.semantic import Semantic
 from koyori.stage2_contracts import MemoryPatch, MemoryWrite
 from koyori.store import put, revised
+
+
+def test_text_patch_preserves_sharing_expiry_and_procedure_steps(harness):
+    h = harness
+    body = MemoryWrite(
+        kind="procedure",
+        key="dinner",
+        text="Original dinner",
+        visibility="household",
+        validUntil=h.clock() + 600,
+        steps=[{"capability": "commerce.meals", "instruction": "Prepare dinner"}],
+    ).model_dump()
+    grant = h.grant("POST /v1/memories", body)
+    response = h.client.post("/v1/memories", json=body, headers=h.headers(grant=grant))
+    assert response.status_code == 201
+    mid = response.json()["id"]
+    response = h.client.patch(
+        f"/v1/memories/{mid}", json={"text": "Corrected dinner"}, headers=h.headers(version=1)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["steps"] == body["steps"]
+    assert response.json()["visibility"] == "household"
+    assert response.json()["validUntil"] == body["validUntil"]
+    assert h.client.get(f"/v1/memories/{mid}", headers=h.headers("sam")).status_code == 200
+    response = h.client.patch(
+        f"/v1/memories/{mid}",
+        json={"text": "Permanent dinner", "validUntil": None},
+        headers=h.headers(version=2),
+    )
+    assert response.status_code == 200 and response.json()["validUntil"] is None
+    assert (
+        h.client.patch(
+            f"/v1/memories/{mid}",
+            json={"text": "No steps", "steps": []},
+            headers=h.headers(version=3),
+        ).status_code
+        == 422
+    )
+
+
+def test_patch_sharing_proof_and_idempotency_bind_only_supplied_fields(harness):
+    h = harness
+    item = memory(h, validUntil=h.clock() + 600)
+    path = f"/v1/memories/{item['id']}"
+    body = {"text": "Shared breakfast", "visibility": "household"}
+    assert h.client.patch(path, json=body, headers=h.headers(version=1)).status_code == 403
+    grant = h.grant(f"PATCH {path}", body, version=1)
+    headers = h.headers(version=1, grant=grant)
+    response = h.client.patch(path, json=body, headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["validUntil"] == item["validUntil"]
+    assert h.client.patch(path, json=body, headers=headers).status_code == 200
+    assert (
+        h.client.patch(path, json={**body, "validUntil": None}, headers=headers).status_code == 409
+    )
+
+
+@pytest.mark.parametrize("kind", ["preference", "procedure"])
+def test_expired_key_can_be_replaced_without_old_erasure_releasing_new_slot(harness, kind):
+    h = harness
+    body = MemoryWrite(
+        kind=kind,
+        key="dinner",
+        text="Original",
+        validUntil=h.clock() + 10,
+        steps=[{"capability": "commerce.meals", "instruction": "Dinner"}]
+        if kind == "procedure"
+        else [],
+    ).model_dump()
+    first = h.client.post("/v1/memories", json=body, headers=h.headers()).json()
+    h.clock.advance(11)
+    body.update(text="Replacement", validUntil=None)
+    response = h.client.post("/v1/memories", json=body, headers=h.headers())
+    assert response.status_code == 201, response.text
+    second = response.json()
+    assert second["id"] != first["id"]
+    assert (
+        h.client.delete(f"/v1/memories/{first['id']}", headers=h.headers(version=1)).status_code
+        == 200
+    )
+    assert h.client.post("/v1/memories", json=body, headers=h.headers()).status_code == 409
+    context = h.client.post("/v1/context", json={"key": "dinner"}, headers=h.headers()).json()
+    assert [item["id"] for item in context["items"]] == [second["id"]]
+
+
+def test_expired_slot_replacement_is_guarded_against_canonical_renewal(harness):
+    h = harness
+    body = MemoryWrite(
+        kind="preference", key="dinner", text="Original", validUntil=h.clock() + 10
+    ).model_dump()
+    first = h.client.post("/v1/memories", json=body, headers=h.headers()).json()
+    h.clock.advance(11)
+    service = Memory(h.domain)
+    ctx = h.domain.context("alex", h.h)
+    replacement, writes, _ = service.create(ctx, {**body, "validUntil": None})
+    old = h.domain.store.get("Domain", (hkey(h.h), f"MEMORY#{first['id']}"))
+    h.domain.store.transact([put("Domain", revised(old, validUntil=h.clock() + 600), old)])
+    with pytest.raises(Conflict):
+        h.domain.store.transact(ctx.guards() + writes)
+    assert h.domain.store.get("Domain", (hkey(h.h), f"MEMORY#{replacement['id']}")) is None
+
+
+def test_civil_day_context_spends_archive_bound_on_newest_utc_partition(harness):
+    h = harness
+    day = "2026-10-04"
+    start = int(datetime.fromisoformat(day).replace(tzinfo=ZoneInfo("Europe/Paris")).timestamp())
+    h.clock.value = start + 2 * 86400
+    item = memory(h, occurredAt=start + 12 * 3600)
+    # More than the archive bound in the older UTC slice used to hide the newest slice.
+    older_pk = f"MEMDAY#{h.h}#2026-10-03"
+    for i in range(501):
+        h.domain.store.transact(
+            [put("Domain", row(older_pk, f"{start:020d}#{i:04d}", id=f"missing-{i}"))]
+        )
+    query, scanned = h.domain.store.query, []
+
+    def tracked_query(table, pk, **kwargs):
+        page, last = query(table, pk, **kwargs)
+        if pk.startswith("MEMDAY#"):
+            scanned.extend(page)
+        return page, last
+
+    h.domain.store.query = tracked_query
+    response = h.client.post("/v1/context", json={"day": day}, headers=h.headers())
+    assert response.status_code == 200
+    assert response.json()["items"][0]["id"] == item["id"]
+    assert response.json()["truncated"] is True
+    assert len(scanned) == 500
+
+
+def test_natural_expiration_purges_ranked_vectors_after_worker_restart(harness):
+    h = harness
+    expired = [memory(h, validUntil=h.clock() + 10) for _ in range(20)]
+    valid = memory(h)
+    # Lower-ranked live candidate, below the original top-20 expired candidates.
+    assert (
+        h.client.patch(
+            f"/v1/memories/{valid['id']}",
+            json={"text": "Breakfast dinner"},
+            headers=h.headers(version=1),
+        ).status_code
+        == 200
+    )
+    service = Semantic(h.domain)
+    service.mode = "simulated"
+    service.sweep()
+    service.sweep()
+    h.clock.advance(11)
+    restarted = Semantic(h.domain)
+    restarted.mode = "simulated"
+    restarted.sweep()
+    assert [
+        item["id"] for item in restarted.search(h.domain.context("alex", h.h), "Breakfast tomorrow")
+    ] == [valid["id"]]
+    assert all(
+        h.domain.store.get("Domain", (f"VECTOR#{h.h}", f"MEMORY#{x['id']}"))["deleted"]
+        for x in expired
+    )
+
+
+def test_legacy_done_vectors_are_repaired_on_recall_then_purged_after_restart(harness):
+    h = harness
+    expired = [memory(h, validUntil=h.clock() + 10) for _ in range(20)]
+    valid = memory(h)
+    assert (
+        h.client.patch(
+            f"/v1/memories/{valid['id']}",
+            json={"text": "Breakfast dinner"},
+            headers=h.headers(version=1),
+        ).status_code
+        == 200
+    )
+    service = Semantic(h.domain)
+    service.mode = "simulated"
+    service.sweep()
+    service.sweep()
+    # Reproduce the published worker's DONE records, without an expiration schedule.
+    for item in expired:
+        intent = h.domain.store.get("Delivery", (f"MEMINDEX#{item['id']}", "META"))
+        done = h.domain.done_intent(intent)
+        done.pop("dueAt", None)
+        h.domain.store.transact([put("Delivery", done, intent)])
+    h.clock.advance(11)
+    ctx = h.domain.context("alex", h.h)
+    assert service.sweep() == 0
+    assert service.search(ctx, "Breakfast tomorrow") == []
+    restarted = Semantic(h.domain)
+    restarted.mode = "simulated"
+    assert restarted.sweep() == 20
+    assert [item["id"] for item in restarted.search(ctx, "Breakfast tomorrow")] == [valid["id"]]
+
+
+def test_legacy_expiration_repair_loses_to_concurrent_renewal(harness):
+    h = harness
+    item = memory(h, validUntil=h.clock() + 10)
+    service = Semantic(h.domain)
+    service.mode = "simulated"
+    service.sweep()
+    key = (f"MEMINDEX#{item['id']}", "META")
+    intent = h.domain.store.get("Delivery", key)
+    h.domain.store.transact([put("Delivery", h.domain.done_intent(intent), intent)])
+    h.clock.advance(11)
+    transact = h.domain.store.transact
+
+    def renew_before_repair(changes):
+        current = h.domain.store.get("Domain", (hkey(h.h), f"MEMORY#{item['id']}"))
+        latest = h.domain.store.get("Delivery", key)
+        renewed = revised(current, validUntil=h.clock() + 600)
+        transact(
+            [
+                put("Domain", renewed, current),
+                put("Delivery", Memory(h.domain).index_intent(renewed, latest), latest),
+            ]
+        )
+        transact(changes)
+
+    h.domain.store.transact = renew_before_repair
+    service.repair_expired_candidate(h.domain.context("alex", h.h), item["id"])
+    h.domain.store.transact = transact
+    current = h.domain.store.get("Delivery", key)
+    assert current["memoryRev"] == 2 and current["GSI1PK"].startswith("MEMINDEX#")
+    service.sweep()
+    assert service.search(h.domain.context("alex", h.h), "Breakfast")[0]["rev"] == 2
 
 
 def test_memories_are_private_by_default_and_shared_requires_fresh_proof(harness):

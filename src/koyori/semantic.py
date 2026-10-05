@@ -72,6 +72,42 @@ class Semantic(Service):
         self.vectors = self.vectors or self.settings.client("s3vectors")
         return self.vectors
 
+    def completed_intent(self, memory, latest, *, removed):
+        expires = memory.get("validUntil")
+        if not removed and expires:
+            # Expiration is a durable purge, including when it crossed during the put.
+            due = max(self.domain.now(), expires)
+            return revised(
+                latest,
+                status="PENDING",
+                retries=0,
+                dueAt=due,
+                GSI1PK=f"MEMERASE#{int(memory['id'][:8], 16) % self.settings.shards}",
+                GSI1SK=f"{due:020d}#{memory['id']}",
+            )
+        return self.domain.done_intent(latest)
+
+    def repair_expired_candidate(self, ctx, mid):
+        """Older DONE projections had no expiration schedule; repair only recalled IDs."""
+        current = self.store.get("Domain", (hkey(ctx.h), f"MEMORY#{mid}"))
+        if not current or current["deleted"] or not current.get("validUntil"):
+            return
+        if current["validUntil"] > self.domain.now():
+            return
+        latest = self.store.get("Delivery", (f"MEMINDEX#{mid}", "META"))
+        if not latest or latest["status"] != "DONE":
+            return
+        try:
+            self.store.transact(
+                ctx.guards()
+                + [
+                    guard("Domain", current),
+                    put("Delivery", self.completed_intent(current, latest, removed=False), latest),
+                ]
+            )
+        except Conflict:
+            return  # A renewal or another worker wins; its intent must be preserved.
+
     def finish_external(self, work, *, completed=False, recovery=False):
         """An independent durable record survives replacement of the main intent.
 
@@ -86,7 +122,9 @@ class Semantic(Service):
             if attempt["status"] == "DONE" and recovery:
                 return
             if completed and current["rev"] == work["memoryRev"]:
-                updated = self.domain.done_intent(latest)
+                updated = self.completed_intent(
+                    current, latest, removed=work.get("removed", current["deleted"])
+                )
             else:
                 updated = Memory(self.domain).index_intent(current, latest)
                 if current["rev"] == latest["memoryRev"]:
@@ -141,6 +179,7 @@ class Semantic(Service):
                 h=intent["h"],
                 memoryId=memory["id"],
                 memoryRev=memory["rev"],
+                removed=bool(removed),
                 status="PENDING",
                 dueAt=due,
                 GSI1PK=f"MEMREPAIR#{int(wid[:8], 16) % self.settings.shards}",
@@ -200,7 +239,7 @@ class Semantic(Service):
                 writes
                 + [
                     guard("Domain", memory),
-                    put("Delivery", self.domain.done_intent(latest), latest),
+                    put("Delivery", self.completed_intent(memory, latest, removed=removed), latest),
                 ]
             )
         except Conflict:
@@ -287,6 +326,7 @@ class Semantic(Service):
                 item = Memory(self.domain).get(ctx, candidate["memoryId"])
             except Problem as exc:
                 if exc.status == 404:
+                    self.repair_expired_candidate(ctx, candidate["memoryId"])
                     continue
                 raise
             if (

@@ -12,6 +12,7 @@ jobs:
         with:
           version: "0.11.28"
       - run: uv sync --frozen --group infra
+      - run: uv run python scripts/record_evidence.py --check-source
       - run: uv run ruff check src tests scripts infrastructure
       - run: uv run ruff format --check src tests scripts infrastructure
       - run: docker compose up -d --build
