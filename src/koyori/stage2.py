@@ -13,6 +13,11 @@ class Service:
     def mutate(
         self, ctx, operation, body, key, version, grant, work, authorize=None, protect=False
     ):
+        restored = self.store.get("Sessions", ("RESTORE_FENCE", "META"))
+        if restored and restored.get("blocked"):
+            raise Problem(
+                503, "RESTORE_OFFLINE", "Restored namespace awaits operator reconciliation."
+            )
         key = idempotency_key(key)
         hashed = request_hash(body, version)
         cache_key = (

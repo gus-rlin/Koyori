@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0",
+  "state": "PREPARED_NOT_DEPLOYED",
+  "contracts": {
+    "domainSchema": "1.0",
+    "eventSchema": "1.0",
+    "approvalBinding": "exact-body-and-revision-v1",
+    "commerceIntent": "stable-business-id-v1",
+    "mcpProtocol": "2025-11-25",
+    "voiceProtocol": "1.0"
+  },
+  "restoration": "offline-current-suppression-ledger-and-provider-reconciliation",
+  "backendRegion": "eu-west-1",
+  "speechRegion": "eu-north-1",
+  "speechModel": "amazon.nova-2-sonic-v1:0",
+  "voiceImage": null,
+  "mcpImage": null,
+  "requiredArchitecture": "arm64",
+  "runtimeArchitectureQualified": false,
+  "sourceSha256": "6fc13bd4747d25cf439ddb1d6e4e31dc7f676fec992c9507877c71ae88fe0925",
+  "lambdaBundleSha256": "ce2113eeaa3f087f68eb01934c93b7e0941f51d4832ea73956e53a71d880f67f",
+  "templateSha256": "aab4cce39f98362cbca382dae08e4df818ad79ce8668a721aa5b030656358c4d",
+  "localRuntimeImageId": "sha256:039e26853d86954fe604a89cacc3c3a93b972beb7016d139442cb55a2eff5933",
+  "lockSha256": "c52a14c6bbdc77a314aa2faf2b6304a3b075007f6f7727e88c2524a8109b1526",
+  "cloudQualification": "NOT_RUN",
+  "observedAwsCost": null,
+  "awsResourcesCreated": []
+}

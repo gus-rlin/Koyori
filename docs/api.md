@@ -64,3 +64,7 @@ Les contrats mémoire, contexte, Google Calendar, devis, approbations, budgets e
 Les [contrats de coordination](stage3.md) ajoutent `/v1/goals`, `/v1/routines`, `/v1/learning`, `/v1/notification-policy` et `/v1/notifications`. Les objets sont privés à leur propriétaire personnel, avec contrôle canonique et génération d'accès. Un `202` de création ou de contrôle signifie sauvegarde durable ; les actions restent soumises au devis, au budget et à l'approbation exacte de l'étape 2. La politique de notifications se crée avec `If-Match: "0"`, puis se modifie avec sa révision positive.
 
 Les états de coordination ajoutent `WAITING_TIME`, `WAITING_APPROVAL`, `WAITING_PROVIDER`, `NEEDS_ATTENTION` et `CANCELLING`. Ils sont observables sur `/goals/{id}` ; les routes de contrôle des tâches synthétiques ne pilotent pas ces objectifs. Les versions de plan et les reçus accessibles permettent de distinguer proposition, réservation, envoi, résultat et annulation réellement confirmée.
+
+## Extension étape 4
+
+[Contrats des canaux](stage4.md) : `POST /mcp` avec scope/audience propres ; `POST /v1/sessions` pour l'admission vocale ; `POST /v1/activity/subscription` et `GET /v1/activity/catchup?after=...` ; `GET /v1/privacy/export` ; `POST /v1/privacy/memories/erase` avec preuve fraîche ; `GET /v1/privacy/erasures/<id>`. La voix est un WebSocket séparé, avec bootstrap et PCM versionnés. Une restauration impose `RESTORE_OFFLINE` aux mutations et workers jusqu'à la revue opérateur.

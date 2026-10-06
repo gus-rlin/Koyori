@@ -1,0 +1,9 @@
+# Proposed complementary contribution: MCP authority boundary examples
+
+Prepared locally on 2026-10-06. Status: proposal and contribution outline; no external repository, publication, pull request or merge exists. Proposed license: Apache-2.0, consistent with Koyori's license. Opening Koyori's main repository is not treated as the extra Open Source contribution.
+
+The proposed deliverable is a reusable Python MCP example and regression cases showing that caller-controlled `_meta`, actor/household fields and natural language instructions cannot grant authority. It should demonstrate resource-bound OAuth at the public boundary, a short-lived opaque delegation at the internal boundary, exact tool allowlists, revocation and concurrent finalized-request idempotency. This is application guidance, not a claim that the MCP SDK has a vulnerability.
+
+Koyori already exercises these cases in `tests/test_stage4_mcp.py`, `test_stage4_sessions.py` and `test_stage4_integration.py`, using MCP 1.30.0 and DynamoDB Local. A complementary contribution should extract the small, independently runnable examples, replace household-specific dependencies with a fixture store, and document stateless Streamable HTTP. Validate them against the supported upstream release, run the example's tests, review license compatibility, then select an upstream examples repository or publish a separate repository. The target and URL remain undecided; no attribution or acceptance is invented.
+
+Usefulness for Koyori: make its boundary decisions reproducible for other agent applications and reduce accidental authorization through model-controlled metadata. Priority: important for the Open Source mini-challenge; it is not required for local channel operation. Track actual publication dates, repository, license, test evidence, PR URL and merge separately in JRN-021 or a later journal entry. The current preparation alone does not demonstrate mini-challenge eligibility.

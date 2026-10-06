@@ -40,6 +40,7 @@ def test_evidence_identifies_github_actions(tmp_path, monkeypatch, github_action
         "artifacts/local-recovery.json": '{"result":"PASS","checks":[]}',
         "artifacts/stage2-recovery.json": '{"result":"PASS","checks":[]}',
         "artifacts/stage3-recovery.json": '{"result":"PASS","checks":[]}',
+        "artifacts/stage4-recovery.json": '{"result":"PASS","checks":[],"observedLatencyMs":{}}',
         "artifacts/runtime-sbom.json": '{"vulnerabilities":[]}',
         "cdk.out/KoyoriFoundation.template.json": "{}",
         "src/koyori/example.py": "# synthetic test fixture\n",
@@ -47,6 +48,7 @@ def test_evidence_identifies_github_actions(tmp_path, monkeypatch, github_action
     }
     for name in (
         "Dockerfile",
+        "Dockerfile.runtime",
         "compose.yaml",
         "pyproject.toml",
         "uv.lock",

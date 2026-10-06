@@ -74,6 +74,7 @@ class DynamoStore:
     def __init__(self, settings: Settings):
         self.client = settings.client("dynamodb")
         self.prefix = settings.prefix
+        self.shards = settings.shards
         self.serializer, self.deserializer = TypeSerializer(), TypeDeserializer()
 
     def name(self, table: str) -> str:
