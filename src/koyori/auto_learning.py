@@ -30,6 +30,7 @@ proposals. Simulated evidence remains simulated. Do not output reasoning or secr
 
 def durable_declaration(text):
     """Conservative FR/EN gate; a model cannot turn a one-off order into a habit."""
+    text = text.replace("’", "'").replace("‘", "'")
     if re.search(r"ce soir|aujourd'hui|demain|today|tomorrow|tonight", text, re.I):
         return False
     return bool(

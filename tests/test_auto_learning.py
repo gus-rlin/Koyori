@@ -16,7 +16,7 @@ from test_memory_hermes import index, save
 from test_stage3_adapters import Raw
 
 from koyori.actions import Actions
-from koyori.auto_learning import AutoLearning, StrandsLearning
+from koyori.auto_learning import AutoLearning, StrandsLearning, durable_declaration
 from koyori.backup import apply_suppressions, ledger_hash
 from koyori.domain import hkey
 from koyori.errors import Conflict
@@ -111,6 +111,21 @@ def test_episodic_request_and_successful_purchase_are_not_preferences(harness, t
     save(h, text=text)
     service.sweep()
     assert proposals(h) == []
+
+
+@pytest.mark.parametrize("apostrophe", ["'", "’", "‘"])
+@pytest.mark.parametrize("model_proposal", [False, True])
+def test_today_preference_never_creates_durable_proposal(harness, apostrophe, model_proposal):
+    h = harness
+    service = enabled(h)
+    save(h, text=f"Aujourd{apostrophe}hui, je préfère le chocolat")
+    service.run(jobs(h)[0], FixtureReview() if model_proposal else None)
+    assert proposals(h) == []
+
+
+@pytest.mark.parametrize("text", ["J’aime le chocolat", "D’habitude, du chocolat"])
+def test_typographic_apostrophes_preserve_durable_declarations(text):
+    assert durable_declaration(text)
 
 
 def test_atomic_three_proposals_group_notifications_and_deduplicate_rejections(harness):

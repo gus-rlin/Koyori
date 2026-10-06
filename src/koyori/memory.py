@@ -93,7 +93,9 @@ class Memory(Service):
                     slot = self.store.get("Domain", (hkey(ctx.h), f"MEMKEY#{actor}#{kind}#{key}"))
                     if slot:
                         slots.append(slot)
-        for actor in ctx.household["memberIds"]:
+        # Other members must not exhaust discovery before the current profile is scanned.
+        actors = sorted(ctx.household["memberIds"], key=lambda actor: actor != ctx.actor)
+        for actor in actors:
             after = None
             while scanned < 500:
                 page, after = self.store.query(

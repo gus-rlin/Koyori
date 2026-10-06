@@ -67,6 +67,42 @@ def test_core_survives_500_newer_exchanges_without_violating_civil_day(harness):
     assert payload["memories"][0]["id"] == old["id"] and payload["missingMemoryKeys"] == []
 
 
+def test_core_prioritizes_current_member_before_household_scan_limit(harness, monkeypatch):
+    h = harness
+    for i in range(505):
+        save(h, kind="preference", key=f"pref{i}", text=f"Préférence privée {i}")
+    own = save(h, actor="sam", kind="preference", key="dessert", text="Je préfère le chocolat")
+    scanned = 0
+    query = h.domain.store.query
+
+    def count_slots(*args, **kwargs):
+        nonlocal scanned
+        page, cursor = query(*args, **kwargs)
+        if kwargs.get("prefix", "").startswith("MEMKEY#"):
+            scanned += len(page)
+        return page, cursor
+
+    monkeypatch.setattr(h.domain.store, "query", count_slots)
+    ctx = h.domain.context("sam", h.h)
+    result = Memory(h.domain).context(ctx, ContextQuery(includeCore=True).model_dump())
+    assert [item["id"] for item in result["coreItems"]] == [own["id"]]
+    assert result["truncated"] and scanned <= 500
+
+    response = h.client.post(
+        "/v1/goals", json={"text": "Prépare le dessert"}, headers=h.headers("sam")
+    )
+    assert response.status_code == 202, response.text
+    ctx = h.domain.context("sam", h.h)
+    payload = goals(h).context_payload(ctx, task(h, response.json()["id"]))
+    assert own["id"] in [item["id"] for item in payload["memories"]]
+    for actor in ("alex", "speaker"):
+        result = Memory(h.domain).context(
+            h.domain.context(actor, h.h),
+            ContextQuery(includeCore=True, key="dessert").model_dump(),
+        )
+        assert own["id"] not in [item["id"] for item in result["coreItems"]]
+
+
 def test_old_archive_search_normalizes_unicode_accents_case_and_intersects_terms(harness):
     h = harness
     old = save(h, text="Une crème CAFÉ délicieuse", occurredAt=h.clock() - 10000)
