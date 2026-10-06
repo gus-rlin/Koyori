@@ -20,6 +20,17 @@ def bootstrap(grant):
     }
 
 
+def test_http_invocation_only_describes_voice_transport(harness):
+    h = harness
+    sessions, grant = admission(h)
+    client = TestClient(create_voice_app(domain=h.domain))
+    response = client.post("/invocations", json={"ticket": grant["ticket"], "prompt": "Buy"})
+    assert response.status_code == 200
+    assert response.json() == {"transport": "websocket", "path": "/ws"}
+    assert sessions.consume(grant["ticket"], grant["runtimeSessionId"])
+    assert client.get("/ping").json() == {"status": "Healthy"}
+
+
 def test_socket_finalize_interrupt_disconnect_and_rest_state(harness):
     h = harness
     s, grant = admission(h)

@@ -153,6 +153,11 @@ def create_voice_app(*, domain=None, speech_factory=None, tools=None, polly=None
     def ping():
         return {"status": "HealthyBusy" if app.state.active_connections else "Healthy"}
 
+    @app.post("/invocations")
+    def invocations():
+        # AgentCore HTTP requires this route; voice admission remains on /ws.
+        return {"transport": "websocket", "path": "/ws"}
+
     @app.websocket("/ws")
     async def websocket(ws: WebSocket):
         origin = ws.headers.get("origin")

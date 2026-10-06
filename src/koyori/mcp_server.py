@@ -126,7 +126,9 @@ class MCPTransport:
                     ctx, mode="shared" if ctx.profile["kind"] == "shared" else "personal"
                 )
                 if self.domain.settings.env != "local":
-                    return await anyio.to_thread.run_sync(self.proxy, body, secret)
+                    return await anyio.to_thread.run_sync(
+                        self.proxy, body, secret, request.headers.get("mcp-session-id")
+                    )
             # Replace client authority, including discovery metadata, on every request.
             if isinstance(body.get("params"), dict):
                 body["params"]["_meta"] = {RESERVED: secret}
@@ -175,7 +177,7 @@ class MCPTransport:
                 headers={"WWW-Authenticate": challenge, "Cache-Control": "no-store"},
             )
 
-    def proxy(self, body, secret):
+    def proxy(self, body, secret, session_id=None):
         arn = self.domain.settings.mcp_runtime_arn
         if not arn:
             raise Problem(503, "MCP_UNCONFIGURED", "MCP runtime is unavailable.")
@@ -184,12 +186,29 @@ class MCPTransport:
             agentRuntimeArn=arn,
             contentType="application/json",
             accept="application/json",
+            mcpProtocolVersion=PROTOCOL,
             payload=json.dumps(body).encode(),
+            **({"mcpSessionId": session_id} if session_id else {}),
         )
         data = result["response"].read(65537)
         if len(data) > 65536:
             raise Problem(502, "MCP_RESPONSE_TOO_LARGE", "Runtime response exceeds bounds.")
-        return Response(data, media_type="application/json", headers={"Cache-Control": "no-store"})
+        headers = {"Cache-Control": "no-store"}
+        for field, header in (
+            ("mcpSessionId", "Mcp-Session-Id"),
+            ("mcpProtocolVersion", "MCP-Protocol-Version"),
+        ):
+            if result.get(field):
+                headers[header] = result[field]
+        for header, value in result.get("ResponseMetadata", {}).get("HTTPHeaders", {}).items():
+            if header.lower() in {"www-authenticate", "retry-after"}:
+                headers[header] = value
+        return Response(
+            data,
+            status_code=result["statusCode"],
+            media_type=result.get("contentType", "application/json"),
+            headers=headers,
+        )
 
 
 def create_internal_app():

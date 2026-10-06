@@ -1,6 +1,12 @@
 """Protocol interoperability and resource-bound OAuth through the actual SDK transport."""
 
+from io import BytesIO
+from types import SimpleNamespace
 from uuid import uuid4
+
+import boto3
+from botocore.response import StreamingBody
+from botocore.stub import ANY, Stubber
 
 from koyori.demo import token
 from koyori.mcp_server import RESERVED
@@ -138,3 +144,77 @@ def test_shared_mcp_task_read_and_personal_mutation_refused(harness):
         actor="speaker",
     )
     assert refused.json()["result"]["isError"] is True
+
+
+def test_deployed_proxy_preserves_session_status_and_protocol_headers(harness, monkeypatch):
+    h = harness
+    arn = "arn:aws:bedrock-agentcore:eu-west-1:123456789012:runtime/koyori_test-1234567890"
+    client = boto3.client(
+        "bedrock-agentcore",
+        region_name="eu-west-1",
+        aws_access_key_id="testing",
+        aws_secret_access_key="testing",
+    )
+    monkeypatch.setattr(
+        h.domain,
+        "settings",
+        SimpleNamespace(
+            **{**vars(h.settings), "env": "dev", "mcp_runtime_arn": arn},
+            client=lambda service: client,
+        ),
+    )
+    session_id = uuid4().hex
+    expected = {
+        "agentRuntimeArn": arn,
+        "contentType": "application/json",
+        "accept": "application/json",
+        "mcpProtocolVersion": "2025-11-25",
+        "payload": ANY,
+    }
+    challenge = 'Bearer resource_metadata="https://example.invalid/metadata"'
+    with Stubber(client) as stub:
+        for status, params in ((200, expected), (401, {**expected, "mcpSessionId": session_id})):
+            data = b'{"code":"INVALID_GRANT"}' if status == 401 else b'{"result":{}}'
+            stub.add_response(
+                "invoke_agent_runtime",
+                {
+                    "statusCode": status,
+                    "contentType": "application/problem+json"
+                    if status == 401
+                    else "application/json",
+                    "mcpSessionId": session_id,
+                    "mcpProtocolVersion": "2025-11-25",
+                    "response": StreamingBody(BytesIO(data), len(data)),
+                    "ResponseMetadata": {
+                        "HTTPHeaders": {
+                            "www-authenticate": challenge,
+                            "retry-after": "1",
+                            "authorization": "must-not-be-forwarded",
+                        }
+                    },
+                },
+                params,
+            )
+        first = request(
+            h,
+            "initialize",
+            {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "1"},
+            },
+        )
+        assert first.status_code == 200
+        assert first.headers["Mcp-Session-Id"] == session_id
+        second = request(
+            h, "tools/list", headers={"Mcp-Session-Id": first.headers["Mcp-Session-Id"]}
+        )
+        assert second.status_code == 401
+        assert second.json() == {"code": "INVALID_GRANT"}
+        assert second.headers["Content-Type"] == "application/problem+json"
+        assert second.headers["MCP-Protocol-Version"] == "2025-11-25"
+        assert second.headers["WWW-Authenticate"] == challenge
+        assert second.headers["Retry-After"] == "1"
+        assert second.headers["Cache-Control"] == "no-store"
+        assert "authorization" not in second.headers
+        stub.assert_no_pending_responses()

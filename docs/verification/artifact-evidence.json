@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "dateEuropeParis": "2026-10-06T04:07:03.088783+02:00",
   "scope": "stages-one-two-three-four-local-and-aws-preparation",
-  "sourceSha256": "6fc13bd4747d25cf439ddb1d6e4e31dc7f676fec992c9507877c71ae88fe0925",
+  "sourceSha256": "c375d1926a8504f4c86577a1275ad69413acead8bc46e2426736aab6c7b7a017",
   "sourceHashFormat": "sha256(path + NUL + LF-text); case-sensitive POSIX path order",
   "lockSha256": "c52a14c6bbdc77a314aa2faf2b6304a3b075007f6f7727e88c2524a8109b1526",
   "lambdaBundleSha256": "ce2113eeaa3f087f68eb01934c93b7e0941f51d4832ea73956e53a71d880f67f",
@@ -69,5 +69,17 @@
   "bedrockAndVectorsQualified": false,
   "runtimeDependencyAudit": "no known vulnerabilities found",
   "awsDeployedOrQualified": false,
-  "githubWorkflowExecuted": false
+  "githubWorkflowExecuted": false,
+  "followupVerification": {
+    "journal": "JRN-024",
+    "dateEuropeParis": "2026-10-06",
+    "previousEvidenceSourceSha256": "6fc13bd4747d25cf439ddb1d6e4e31dc7f676fec992c9507877c71ae88fe0925",
+    "scope": "AgentCore HTTP/MCP fixes; prior cumulative tests, bundles and images describe the previous source; rebuild pending CI",
+    "pytest": {
+      "tests": 34,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  }
 }
