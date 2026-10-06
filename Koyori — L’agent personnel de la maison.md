@@ -351,7 +351,7 @@ La coordination est codée par API : objectifs naturels, plans déclaratifs vali
 
 Les plans bornés à 24 Ko sont conservés dans `Domain` et promus dans la transaction de checkpoint, au lieu d'un second stockage S3 des candidats. Le coordinateur Strands/Nova dispose de quotas durables et de sorties structurées ; Step Functions Standard et Scheduler sont intégrés au code et au CDK. Le coordinateur ne reçoit pas les credentials d'agenda, protégés dans le lecteur dédié. La configuration Nova US exige encore une décision de consentement/région pour les données réelles.
 
-Les recettes locales utilisent un planificateur déterministe simulé et le commerce simulé, jusqu'aux reçus de modification et d'annulation. Strands est réellement exercé avec un transport HTTP intercepté ; le modèle Nova réel, Google, IAM et les services AWS ne sont pas qualifiés à distance. Le contrôle de qualification Nova constate l'absence d'identifiants AWS, sans appel facturable. [Contrats et limites](docs/stage3.md), [vérifications](docs/verification/stage3.md) et JRN-015 distinguent cette implémentation de la vision et des qualifications restant nécessaires.
+Les recettes locales utilisent un planificateur déterministe simulé et le commerce simulé, jusqu'aux reçus de modification et d'annulation. Strands est réellement exercé avec un transport HTTP intercepté ; le modèle Nova réel, Google, IAM et les services AWS ne sont pas qualifiés à distance. Le contrôle de qualification Nova constate l'absence d'identifiants AWS, sans appel facturable. [Contrats et limites](docs/stage3.md), [vérifications](docs/verification/stage3.md) et JRN-018 distinguent cette implémentation de la vision et des qualifications restant nécessaires.
 
 ## Repères documentaires
 
