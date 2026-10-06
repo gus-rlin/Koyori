@@ -353,6 +353,12 @@ Les plans bornés à 24 Ko sont conservés dans `Domain` et promus dans la trans
 
 Les recettes locales utilisent un planificateur déterministe simulé et le commerce simulé, jusqu'aux reçus de modification et d'annulation. Strands est réellement exercé avec un transport HTTP intercepté ; le modèle Nova réel, Google, IAM et les services AWS ne sont pas qualifiés à distance. Le contrôle de qualification Nova constate l'absence d'identifiants AWS, sans appel facturable. [Contrats et limites](docs/stage3.md), [vérifications](docs/verification/stage3.md) et JRN-018 distinguent cette implémentation de la vision et des qualifications restant nécessaires.
 
+## Interface compagnon au 6 octobre 2026
+
+Une première interface React/TypeScript/Vite est disponible dans [apps/web](apps/web/README.md), sur une branche isolée. Elle propose une vue du jour, le suivi des demandes, une décision sur un panier, la correction des souvenirs, les routines et les services. La direction visuelle argent/sauge et la photographie d’intérieur soutiennent une présence domestique calme ; le texte sert de parcours de démonstration accessible.
+
+Cette livraison est une **démonstration interactive autonome**, avec fixtures synthétiques et état limité à l’onglet. Elle n’est pas encore reliée au backend, à une identité réelle, à Google, à un commerçant ni à la voix. Le microphone n’est jamais activé. Les accords et modifications simulés ne constituent ni une autorisation métier ni un reçu fournisseur. La voix reste le point d’accès cible ; son raccordement attend les contrats de l’étape 4. Voir JRN-021 et le [rapport de vérification](docs/verification/interface.md).
+
 ## Repères documentaires
 
 *Sources primaires consultées le 4 octobre 2026. Les capacités citées proviennent des documentations des éditeurs. Les dialogues, l’architecture et les orientations de produit décrivent la proposition à construire.*
@@ -368,4 +374,3 @@ Les recettes locales utilisent un planificateur déterministe simulé et le comm
 9. **Home Assistant** — [Assist](https://www.home-assistant.io/voice_control/) : interface vocale domestique.
 10. **Wu et al.** — [LongMemEval](https://arxiv.org/abs/2410.10813), 2024, révisé en 2025 : évaluation de la mémoire sur la durée.
 11. **Yao et al.** — [τ-bench](https://arxiv.org/abs/2406.12045), 2024 : vérification et répétabilité des tâches.
-

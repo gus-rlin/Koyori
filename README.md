@@ -6,6 +6,14 @@ Le socle exécute une commande synthétique durable, avec identité signée, aut
 
 ## Démarrer
 
+### Interface compagnon
+
+Une [interface React/TypeScript](apps/web/README.md) permet d’explorer la vue du jour, les demandes, le panier, la mémoire et les routines. Depuis `apps/web`, exécuter `npm ci` puis `npm run dev` et ouvrir [Koyori localement](http://127.0.0.1:5178).
+
+**Démonstration interactive autonome** : données fictives et changements limités à l’onglet, réinitialisés au rechargement. Le frontend n’est pas connecté au backend, à Alexa ou aux comptes externes. Aucun microphone ni achat réel. Les [vérifications de l’interface](docs/verification/interface.md) distinguent les parcours testés des intégrations restant à réaliser.
+
+### Backend
+
 Prérequis : Docker avec Compose, et `uv` pour les tests et outils sur l'hôte. Le projet utilise Python 3.12 et `uv.lock`. Les images de base sont fixées par empreinte.
 
 ```powershell
