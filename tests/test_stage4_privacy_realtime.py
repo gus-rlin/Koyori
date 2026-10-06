@@ -48,6 +48,13 @@ def test_erasure_fresh_auth_batches_survive_and_exclude_other_member(harness):
     Privacy(h.domain).sweep()
     assert Privacy(h.domain).get(h.domain.context("alex", h.h), identifier)["status"] == "RUNNING"
     Privacy(h.domain).sweep()
+    for _ in range(6):
+        if (
+            Privacy(h.domain).get(h.domain.context("alex", h.h), identifier)["status"]
+            == "COMPLETED"
+        ):
+            break
+        Privacy(h.domain).sweep()
     final = Privacy(h.domain).get(h.domain.context("alex", h.h), identifier)
     assert final["status"] == "COMPLETED" and final["erased"] == 12
     for mid in own:

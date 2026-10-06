@@ -10,6 +10,10 @@ from koyori.workers.runtime import engine
 
 
 def tick(worker, role: str) -> int:
+    if role == "learning":
+        from koyori.auto_learning import AutoLearning
+
+        return AutoLearning(worker.domain).sweep()
     if role == "channels":
         from koyori.privacy import Privacy
         from koyori.realtime import Signals
@@ -71,6 +75,7 @@ def main():
             "scheduler",
             "notifications",
             "channels",
+            "learning",
         ],
     )
     parser.add_argument("--once", action="store_true")

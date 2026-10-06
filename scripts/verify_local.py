@@ -11,12 +11,38 @@ from uuid import uuid4
 import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
+MEMORY_ENV = os.getenv("KOYORI_MEMORY_ENV") == "1"
+if MEMORY_ENV:
+    for entry in (ROOT / "local" / "memory.env").read_text().splitlines():
+        if entry and not entry.startswith("#"):
+            key, value = entry.split("=", 1)
+            os.environ[key] = value
 BASE = f"http://127.0.0.1:{os.getenv('KOYORI_API_PORT', '8088')}"
 
 
 def compose(*args):
     return subprocess.run(
-        ["docker", "compose", *args], cwd=ROOT, text=True, capture_output=True, check=True
+        [
+            "docker",
+            "compose",
+            *(
+                [
+                    "--env-file",
+                    "local/memory.env",
+                    "-f",
+                    "compose.yaml",
+                    "-f",
+                    "compose.memory.yaml",
+                ]
+                if MEMORY_ENV
+                else []
+            ),
+            *args,
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
     ).stdout
 
 
@@ -39,6 +65,16 @@ def wait_ready():
     raise RuntimeError("API did not become ready")
 
 
+def demo_household(client):
+    """Select the seeded fixture, independently of other qualification households."""
+    response = client.get("/v1/households")
+    response.raise_for_status()
+    matches = [h for h in response.json()["items"] if h["name"] == "Foyer synthétique A"]
+    if len(matches) != 1:
+        raise RuntimeError("The unique seeded household fixture is required")
+    return matches[0]
+
+
 def main():
     wait_ready()
     # Capture bearer credentials in memory only; neither commands nor reports print them.
@@ -49,7 +85,7 @@ def main():
         "run", "--rm", "--no-deps", "demo", "python", "-m", "koyori.demo", "token", "robin"
     ).strip()
     client = httpx.Client(base_url=BASE, timeout=10, headers={"Authorization": f"Bearer {access}"})
-    h = client.get("/v1/households").json()["items"][0]["id"]
+    h = demo_household(client)["id"]
     client.headers["X-Household-Id"] = h
     bookmark = None
     for _ in range(100):

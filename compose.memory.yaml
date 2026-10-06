@@ -1,0 +1,34 @@
+name: koyori-memory-hermes
+x-memory-environment: &memory-environment
+  KOYORI_TABLE_PREFIX: KoyoriMemoryHermes
+services:
+  bootstrap:
+    environment: *memory-environment
+  api:
+    environment: *memory-environment
+  publisher:
+    environment: *memory-environment
+  voice:
+    environment: *memory-environment
+  channels:
+    environment: *memory-environment
+  workflow:
+    environment: *memory-environment
+  activity:
+    environment: *memory-environment
+  repair:
+    environment: *memory-environment
+  connector:
+    environment: *memory-environment
+  projection:
+    environment: *memory-environment
+  coordinator:
+    environment: *memory-environment
+  scheduler:
+    environment: *memory-environment
+  notifications:
+    environment: *memory-environment
+  learning:
+    environment: *memory-environment
+  demo:
+    environment: *memory-environment

@@ -4,7 +4,7 @@ from koyori.domain import hkey, projection, row, uid
 from koyori.errors import Conflict, Problem, missing
 from koyori.memory import Memory
 from koyori.stage2 import Service
-from koyori.store import guard, put, revised
+from koyori.store import guard, put, remove, revised
 
 
 class Privacy(Service):
@@ -28,6 +28,15 @@ class Privacy(Service):
                     current = memory.get(ctx, item["id"], owner=True)
                     value = projection(current)
                     checks.extend(memory.read_checks(ctx, current))
+                except Problem as exc:
+                    if exc.status == 404:
+                        continue
+                    raise
+            if item["SK"].startswith("LEARNING#"):
+                from koyori.learning import Learning
+
+                try:
+                    value = Learning(self.domain).public(ctx, item["id"])
                 except Problem as exc:
                     if exc.status == 404:
                         continue
@@ -70,6 +79,7 @@ class Privacy(Service):
             owner=ctx.actor,
             status="PENDING",
             after=None,
+            phase="MEMORY",
             erased=0,
             createdAt=self.domain.now(),
         )
@@ -117,31 +127,74 @@ class Privacy(Service):
                 from koyori.domain import Context
 
                 ctx = Context(job["owner"], household, owner, profile)
+                phase = job.get("phase", "MEMORY")
+                table, pk, prefix = ("Domain", hkey(ctx.h), f"{phase}#")
+                if phase == "JOBS":
+                    table, pk, prefix = "Delivery", f"LEARNOWNER#{ctx.h}#{ctx.actor}", ""
+                if phase == "DEDUP":
+                    table, pk, prefix = "Delivery", f"LEARNDEDUP#{ctx.h}#{ctx.actor}", ""
                 records, last = self.store.query(
-                    "Domain", hkey(ctx.h), prefix="MEMORY#", after=job["after"], limit=8
+                    table, pk, prefix=prefix, after=job["after"], limit=8
                 )
                 writes, erased = [], job["erased"]
                 for item in records:
-                    if item["owner"] == ctx.actor and not item["deleted"]:
+                    if phase == "MEMORY" and item["owner"] == ctx.actor and not item["deleted"]:
                         _, changes, _ = Memory(self.domain).change(
                             ctx, item["id"], {}, item["rev"], delete=True
                         )
-                        writes.extend(changes)
+                        # Several erasures share one lexical pending counter snapshot.
+                        for change in changes:
+                            if change.key == (hkey(ctx.h), "LEXSTATE"):
+                                prior = next((w for w in writes if w.key == change.key), None)
+                                if prior:
+                                    canonical = self.store.get("Domain", change.key)
+                                    if (
+                                        prior.expected != change.expected
+                                        or (canonical or {}).get("rev") != change.expected
+                                    ):
+                                        raise Conflict("Lexical counter changed during erasure")
+                                    prior.item["pending"] += change.item["pending"] - (
+                                        canonical or {}
+                                    ).get("pending", 0)
+                                    continue
+                            writes.append(change)
                         erased += 1
+                    elif (
+                        phase == "LEARNING"
+                        and item["owner"] == ctx.actor
+                        and not item.get("deleted")
+                    ):
+                        writes.append(
+                            put(
+                                "Domain",
+                                revised(item, text="", steps=[], deleted=True, status="ERASED"),
+                                item,
+                            )
+                        )
+                    elif phase == "JOBS":
+                        pending = self.store.get("Delivery", (item["jobPK"], "META"))
+                        if pending:
+                            writes.append(remove("Delivery", pending))
+                        writes.append(remove("Delivery", item))
+                    elif phase == "DEDUP":
+                        writes.append(remove("Delivery", item))
+                phases = {"MEMORY": "LEARNING", "LEARNING": "JOBS", "JOBS": "DEDUP"}
+                complete = not last and phase == "DEDUP"
                 writes.append(
                     put(
                         "Domain",
                         revised(
                             job,
                             after=last,
+                            phase=phase if last else phases.get(phase, phase),
                             erased=erased,
-                            status="RUNNING" if last else "COMPLETED",
-                            completedAt=None if last else self.domain.now(),
+                            status="COMPLETED" if complete else "RUNNING",
+                            completedAt=self.domain.now() if complete else None,
                         ),
                         job,
                     )
                 )
-                if not last:
+                if complete:
                     fence = self.store.get("Domain", (hkey(ctx.h), f"PRIVACY#{ctx.actor}"))
                     writes.extend(
                         [

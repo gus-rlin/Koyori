@@ -5,6 +5,7 @@ protocol and cannot establish a consistent snapshot while writers are active.
 """
 
 import argparse
+import copy
 import hashlib
 import json
 from dataclasses import replace
@@ -14,9 +15,16 @@ from koyori.config import Settings
 from koyori.store import DynamoStore, put
 
 
+def ledger_hash(ledger):
+    payload = {k: ledger[k] for k in ("schemaVersion", "entries", "privacyFences")}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
 def erasure_ledger(store):
     """Capture suppression keys from the current offline source, including post-backup deletions."""
-    records, after = [], None
+    records, fences, after = [], [], None
     while True:
         args = dict(TableName=store.name("Domain"), ConsistentRead=True, Limit=100)
         if after:
@@ -26,37 +34,74 @@ def erasure_ledger(store):
             item = store.decode(raw)
             if item["SK"].startswith("PRIVACY#") and item.get("status") == "ERASING":
                 raise ValueError("Complete pending memory erasures before capturing a ledger")
-            if item["SK"].startswith("MEMORY#") and item.get("deleted"):
+            if item["SK"].startswith("PRIVACY#"):
+                fences.append(
+                    {
+                        k: item[k]
+                        for k in ("PK", "SK", "rev", "epoch", "status", "owner")
+                        if k in item
+                    }
+                )
+            if item["SK"].startswith(("MEMORY#", "LEARNING#")) and item.get("deleted"):
                 records.append({"PK": item["PK"], "SK": item["SK"], "revision": item["rev"]})
         after = response.get("LastEvaluatedKey")
         if not after:
             break
     entries = sorted(records, key=lambda item: (item["PK"], item["SK"]))
-    return {
-        "schemaVersion": "1.0",
+    ledger = {
+        "schemaVersion": "2.0",
         "sourcePrefix": store.prefix,
         "entries": entries,
-        "sha256": hashlib.sha256(
-            json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest(),
+        "privacyFences": sorted(fences, key=lambda item: (item["PK"], item["SK"])),
     }
+    ledger["sha256"] = ledger_hash(ledger)
+    return ledger
 
 
 def apply_suppressions(tables, ledger, *, shards=4):
     """Restore never revives sessions, approvals or erased memory; external effects stay fenced."""
+    if ledger.get("schemaVersion") != "2.0":
+        raise ValueError("A current version 2.0 erasure ledger is required")
     entries = ledger["entries"]
-    if (
-        ledger.get("schemaVersion") != "1.0"
-        or hashlib.sha256(
-            json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-        != ledger["sha256"]
-    ):
+    if ledger_hash(ledger) != ledger["sha256"]:
         raise ValueError("Erasure ledger integrity failure")
     suppressed = {(entry["PK"], entry["SK"]): entry["revision"] for entry in entries}
     memories = set()
+    tables["Domain"] = [
+        i
+        for i in tables["Domain"]
+        if not i["PK"].startswith(("LEX#", "LEXDOC#")) and i["SK"] != "LEXSTATE"
+    ]
+    tables["Delivery"] = [
+        i
+        for i in tables["Delivery"]
+        if not i["PK"].startswith(("LEARNRUN#", "LEARNOWNER#", "LEARNDEDUP#", "LEXRUN#"))
+    ]
+    by_key = {(i["PK"], i["SK"]): i for i in tables["Domain"]}
+    for fence in ledger["privacyFences"]:
+        key = fence["PK"], fence["SK"]
+        old = by_key.get(key)
+        if old:
+            old.update(
+                epoch=max(old.get("epoch", 0), fence["epoch"]),
+                rev=max(old["rev"], fence["rev"]),
+                status="COMPLETE",
+            )
+        else:
+            added = copy.deepcopy(fence)
+            added["status"] = "COMPLETE"
+            tables["Domain"].append(added)
     for item in tables["Domain"]:
         if (item["PK"], item["SK"]) in suppressed:
+            if item["SK"].startswith("LEARNING#"):
+                item.update(
+                    deleted=True,
+                    text="",
+                    steps=[],
+                    status="ERASED",
+                    rev=max(item["rev"], suppressed[(item["PK"], item["SK"])]),
+                )
+                continue
             item.update(
                 deleted=True,
                 text="",
@@ -102,6 +147,14 @@ def apply_suppressions(tables, ledger, *, shards=4):
                     "GSI1SK": f"{0:020d}#{mid}",
                 }
             )
+    # A proposal linked to an individually erased source must not carry its old text.
+    for item in tables["Domain"]:
+        if (
+            item["SK"].startswith("LEARNING#")
+            and item.get("source", {}).get("kind") == "memory"
+            and item["source"].get("id") in memories
+        ):
+            item.update(text="", steps=[], deleted=True, status="ERASED", rev=item["rev"] + 1)
     return tables
 
 
@@ -134,6 +187,31 @@ def export_local(store: DynamoStore, path: Path) -> dict:
         json.dump(snapshot, output, ensure_ascii=False)
     path.chmod(0o600)
     return {"sha256": snapshot["sha256"], "counts": {k: len(v) for k, v in tables.items()}}
+
+
+def rebuild_lexical(store, settings):
+    """Offline canonical rebuild; no semantic provider or learning trigger is involved."""
+    from koyori.domain import Domain
+    from koyori.lexical import Lexical
+
+    lexical = Lexical(Domain(store, settings, None))
+    households, after = set(), None
+    while True:
+        arguments = dict(TableName=store.name("Domain"), ConsistentRead=True, Limit=100)
+        if after:
+            arguments["ExclusiveStartKey"] = after
+        page = store.client.scan(**arguments)
+        for raw in page["Items"]:
+            item = store.decode(raw)
+            if item["PK"].startswith("H#") and item["SK"] == "META":
+                households.add(item["PK"][2:])
+        after = page.get("LastEvaluatedKey")
+        if not after:
+            break
+    for h in sorted(households):
+        while lexical.backfill(h, drain=True)["more"]:
+            pass
+    return {"households": len(households)}
 
 
 def restore_local(store: DynamoStore, path: Path, *, erasure_overlay: dict | None = None) -> dict:
@@ -184,13 +262,18 @@ def restore_local(store: DynamoStore, path: Path, *, erasure_overlay: dict | Non
     for table, items in tables.items():
         for start in range(0, len(items), 50):
             store.transact([put(table, item) for item in items[start : start + 50]])
-    return {"sha256": snapshot["sha256"], "counts": {k: len(v) for k, v in tables.items()}}
+    rebuilt = rebuild_lexical(store, Settings(prefix=store.prefix, shards=store.shards))
+    return {
+        "sha256": snapshot["sha256"],
+        "counts": {k: len(v) for k, v in tables.items()},
+        "lexicalRebuild": rebuilt,
+    }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["export", "restore", "ledger"])
-    parser.add_argument("path", type=Path)
+    parser.add_argument("command", choices=["export", "restore", "ledger", "reindex"])
+    parser.add_argument("path", type=Path, nargs="?")
     parser.add_argument("--writers-stopped", action="store_true", required=True)
     parser.add_argument("--target-prefix")
     parser.add_argument("--erasure-ledger", type=Path)
@@ -203,6 +286,11 @@ def main():
             parser.error("A new --target-prefix is required")
         settings = replace(settings, prefix=args.target_prefix)
     store = DynamoStore(settings)
+    if args.command == "reindex":
+        print(json.dumps(rebuild_lexical(store, settings)))
+        return
+    if args.path is None:
+        parser.error("A file path is required for export, restore or ledger")
     if args.command == "ledger":
         with args.path.open("x", encoding="utf-8") as output:
             json.dump(erasure_ledger(store), output)

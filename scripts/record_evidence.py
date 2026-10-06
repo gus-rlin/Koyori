@@ -37,6 +37,7 @@ def source_paths():
             "Dockerfile",
             "Dockerfile.runtime",
             "compose.yaml",
+            "compose.memory.yaml",
             "pyproject.toml",
             "uv.lock",
             ".dockerignore",
@@ -73,6 +74,9 @@ def main():
     stage4_recovery = json.loads((ROOT / "artifacts/stage4-recovery.json").read_text())
     if stage4_recovery["result"] != "PASS":
         raise ValueError("Stage-four Docker recovery not verified")
+    memory_recovery = json.loads((ROOT / "artifacts/memory-hermes.json").read_text())
+    if memory_recovery["result"] != "PASS":
+        raise ValueError("Memory Docker recipe not verified")
     for source in (ROOT / "src/koyori").rglob("*.py"):
         bundled = ROOT / "artifacts/lambda/koyori" / source.relative_to(ROOT / "src/koyori")
         if bundled.read_bytes() != source.read_bytes():
@@ -115,6 +119,8 @@ def main():
         "stage2Recovery": stage2_recovery["checks"],
         "stage3Recovery": stage3_recovery["checks"],
         "stage4Recovery": stage4_recovery["checks"],
+        "memoryHermes": memory_recovery["checks"],
+        "liveLearningQualified": False,
         "channelLatency": stage4_recovery["observedLatencyMs"],
         "realSpeechQualified": False,
         "appSyncQualified": False,

@@ -303,6 +303,8 @@ Home Assistant Assist constitue une piste à étudier pour cette expérimentatio
 
 Dots, Grok Bot, ChatGPT et Hermes sont des références de conception. Leur présence dans le document n’implique ni partenariat, ni import automatique de leurs mémoires, ni disponibilité de toutes leurs fonctions pour une intégration externe.
 
+**Amélioration mémoire au 6 octobre 2026 (JRN-028)** : le contexte durable lit les préférences et procédures canoniques indépendamment des échanges récents ; un index lexical DynamoDB rappelle les archives avec droits et sources actuels. L'inspiration [Hermes, commit 4787e4d](https://github.com/NousResearch/hermes-agent/tree/4787e4d56fc8d9265d4c7d3c0fe5accee86b4078), consultée ce jour, est adaptée à l'isolation du foyer. Un worker distinct analyse les échanges personnels et objectifs réussis pour proposer un apprentissage privé, jamais mémorisé avant acceptation explicite. Les corrections conservent partage et expiration ; procédures et modèle ne donnent aucune permission. Deux requêtes SDK à vie par intention et vingt par personne/jour UTC bornent le travail automatique. Effacement et restauration couvrent désormais propositions, jobs et générations de confidentialité, avec réindexation des survivants sous quarantaine. Modes local simulé et adaptateur Nova testé par transport intercepté ; qualité linguistique et accès AWS réels restent à qualifier, activation distante désactivée par défaut. [Contrats et limites](docs/memory-hermes.md), [preuves](docs/verification/memory-hermes.md).
+
 ---
 
 ## 11. Candidature au hackathon Amazon Developer 2026

@@ -234,6 +234,18 @@ def install(stack, *, stage, tables, functions, cursor, api, environment, code_p
                 )
             )
         workers[name] = fn
+        if name == "ChannelMaintenance":
+            fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=["dynamodb:DeleteItem"],
+                    resources=[tables["Delivery"].table_arn],
+                    conditions={
+                        "ForAllValues:StringLike": {
+                            "dynamodb:LeadingKeys": ["LEARNRUN#*", "LEARNOWNER#*", "LEARNDEDUP#*"]
+                        }
+                    },
+                )
+            )
     authorizer = workers["SignalAuthorizer"]
     event_api = appsync.CfnApi(
         stack,
