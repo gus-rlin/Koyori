@@ -16,6 +16,10 @@ def tick(domain, role):
 def connectors(event, context):
     from koyori.workers.runtime import engine
 
+    if event.get("goalRead"):
+        from koyori.workers.stage3_runtime import calendar_read
+
+        return calendar_read(engine().domain, event)
     return {"attempted": tick(engine().domain, "connector")}
 
 

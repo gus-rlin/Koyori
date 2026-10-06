@@ -1,10 +1,14 @@
 """Stage-two invariants against actual DynamoDB Local transactions, not AWS qualification."""
 
+from dataclasses import replace
+
 import pytest
 from stage2_helpers import commerce, memory, quote, reserve
+from test_stage2_calendar import FakeGoogle, connect
 from test_stage2_semantic_adapters import BedrockFixture
 
 from koyori.actions import CATALOG, Actions
+from koyori.calendar import Calendar
 from koyori.domain import hkey, row
 from koyori.errors import Conflict
 from koyori.memory import Memory
@@ -14,6 +18,60 @@ from koyori.store import put, revised
 
 pytestmark = pytest.mark.integration
 pytest_plugins = ["test_integration"]
+
+
+def test_dynamo_pending_watch_and_lost_membership_cleanup_survive_restart(dynamo):
+    h = dynamo
+    h.domain.settings = replace(
+        h.settings,
+        google_client_id="fixture-google",
+        google_redirect_uri="http://127.0.0.1/callback",
+        google_webhook_url="https://example.invalid/hook",
+    )
+    service = h.client.app.state.calendar
+    service.google = FakeGoogle(h.clock)
+    connection, _ = connect(h, service)
+    watch = service.google.watch
+
+    class WorkerKilled(BaseException):
+        pass
+
+    def lost_reply(*args, **kwargs):
+        watch(*args, **kwargs)
+        raise WorkerKilled()
+
+    service.google.watch = lost_reply
+    with pytest.raises(WorkerKilled):
+        service.register_watch(h.domain.context("alex", h.h), connection["id"])
+    service.google.watch = watch
+    restarted = Calendar(h.domain, google=service.google, envelope=service.envelope)
+    assert restarted.register_watch(h.domain.context("alex", h.h), connection["id"]) == 0
+    assert len(service.google.watches) == 1
+    member = h.domain.store.get("Domain", (hkey(h.h), "MEMBER#alex"))
+    h.domain.store.transact([put("Domain", revised(member, active=False), member)])
+    restarted.sweep()
+    current = h.domain.store.get("Domain", (hkey(h.h), f"CONNECTION#{connection['id']}"))
+    assert not current["active"] and current["revokePending"]
+    restarted.sweep()
+    assert h.domain.store.get("Connections", restarted.token_key(current))["envelope"] is None
+    assert service.google.revoked and restarted.sweep() == 0
+
+
+def test_dynamo_disabled_projection_completes_pending_memory_work(dynamo):
+    h = dynamo
+    items = [memory(h) for _ in range(3)]
+    assert (
+        h.client.delete(f"/v1/memories/{items[0]['id']}", headers=h.headers(version=1)).status_code
+        == 200
+    )
+    service = Semantic(h.domain)
+    service.mode = "disabled"
+    assert service.sweep() == 3
+    assert service.sweep() == 0
+    assert all(
+        h.domain.store.get("Delivery", (f"MEMINDEX#{x['id']}", "META"))["status"] == "DONE"
+        for x in items
+    )
 
 
 def test_dynamo_expired_key_replacement_guards_slot_and_canonical_record(dynamo):

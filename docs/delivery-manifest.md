@@ -1,6 +1,6 @@
-# Manifeste de livraison — étapes 1 et 2
+# Manifeste de livraison — étapes 1, 2 et 3
 
-Contrat daté du 2026-10-05. La livraison acceptée est le backend local complet et les artefacts AWS vérifiables sans compte. Les preuves d'exécution AWS demeurent séparées.
+Contrat actualisé le 2026-10-06. La livraison comprend les implémentations locales et les artefacts AWS vérifiables sans compte. Les preuves d'exécution AWS et de qualité du modèle réel demeurent séparées.
 
 | Capacité | Étape | Réalité et dépendances | Contrat et critère |
 | --- | --- | --- | --- |
@@ -18,7 +18,11 @@ Contrat daté du 2026-10-05. La livraison acceptée est le backend local complet
 | Recherche Titan/S3 Vectors | 2 | Adaptateurs et infrastructure préparés ; appels externes non qualifiés | 512 dimensions, filtres serveur, relecture canonique, plafond quotidien |
 | Google Calendar | 2 | OAuth/sync/push codés ; tests avec fournisseur fictif, compte réel non qualifié | Scopes read-only, sélection, chiffrement, refresh/révocation et sync paginé |
 | Commerce, approbations et budgets | 2 | Mécanismes réels ; fournisseur et commandes simulés | Devis exacts, montants entiers, réservation atomique, intention stable, rapprochement et reçus séparés |
-| Planification et apprentissage | 3 | Différé ; aucun modèle appelé | Plans bornés et travail durable existant ; procédures sans élévation des droits |
+| Plans naturels et spécialistes | 3 | Réel par API ; planificateur de recette simulé ; Strands exécuté avec HTTP intercepté | DAG typé/versionné, comptes/dates/révisions validés, 2 lectures parallèles, prix/reçus des connecteurs |
+| Coordinateur Nova et quotas | 3 | Adaptateur réel préparé ; qualification distante `NOT_RUN` sans identifiants AWS | 1 réparation, 2 requêtes par proposition, 16 par objectif, 200 par personne/foyer/jour ; aucune autorité au modèle |
+| Reprise et changement d'objectif | 3 | Réel en local, intentions et checkpoints persistants | Baux/générations, attentes sans modèle actif, ancienne action rapprochée avant remplacement, même intention commerciale |
+| Routines et notifications | 3 | Réel en local ; Scheduler/Step Functions Standard codés et synthétisés | UTC/IANA/DST, occurrence/règle versionnées, réparation de réveils, groupes privés et horaires de calme |
+| Apprentissage sourcé | 3 | Réel par API, propositions explicitement acceptées | Révisions source/cible, correction et effacement des projections, procédures déclaratives, aucune expansion des droits |
 | Voix, MCP et Alexa+ | 4 | Différé ; aucune intégration native | Canaux sur le même domaine, qualification distincte du canal représentant Alexa |
 
 ## Choix de mise en œuvre
@@ -27,9 +31,9 @@ Python 3.12, FastAPI/Pydantic pour les contrats HTTP, boto3 pour les transaction
 
 Trois tables suffisent au socle : `Domain`, `Delivery`, `Sessions`. Les lectures d'autorité utilisent les clés de base avec cohérence forte ; les index servent uniquement à découvrir le travail en attente. Le registre des membres actifs, borné à huit identités dans le foyer, est modifié dans la même transaction que les appartenances. Il évite que l'historique des révocations masque les membres actuels.
 
-Un grant d'exécution est attaché à la capacité synthétique, au propriétaire et à sa génération d'accès. Réinscrire une personne ne réactive pas ses anciens grants d'exécution ou délégations. Les actions d'un modèle et les préférences n'existent pas à cette étape et ne peuvent accorder de droits.
+Un grant d'exécution est attaché à la capacité, au propriétaire et à sa génération d'accès. Réinscrire une personne ne réactive pas ses anciens grants d'exécution ou délégations. Les sorties de modèle, préférences et procédures ne peuvent accorder de droits.
 
-Le TDD propose Step Functions Standard pour les plans et attentes agentiques. L'étape 1 réalise les tentatives finies directement dans les workers avec état canonique, intentions durables et fencing. Step Functions sera qualifié avec la coordination de l'étape 3 ; il n'est pas annoncé comme livré. Ce choix conserve les garanties de reprise de la recette synthétique et évite de prétendre qualifier des workflows de modèles absents.
+Le TDD propose Step Functions Standard pour les plans et attentes agentiques. L'étape 1 conserve ses workers directs ; l'étape 3 ajoute les adaptateurs et la synthèse Standard, avec une exécution finie par checkpoint et des réveils persistants. Les petits plans (24 Ko maximum) restent dans `Domain` avec promotion atomique. Le comportement distant de Step Functions/Scheduler reste à qualifier. [Contrats détaillés](stage3.md).
 
 ## Limites conservées
 

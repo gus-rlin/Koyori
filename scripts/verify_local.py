@@ -20,6 +20,14 @@ def compose(*args):
     ).stdout
 
 
+def worker_environment():
+    """Host helpers must use the same isolated emulator ports as Compose."""
+    environment = dict(os.environ)
+    environment["KOYORI_DDB_ENDPOINT"] = f"http://127.0.0.1:{os.getenv('KOYORI_DDB_PORT', '8800')}"
+    environment["KOYORI_SQS_ENDPOINT"] = f"http://127.0.0.1:{os.getenv('KOYORI_SQS_PORT', '9324')}"
+    return environment
+
+
 def wait_ready():
     for _ in range(60):
         try:
@@ -52,7 +60,17 @@ def main():
         bookmark = page["nextCursor"]
     else:
         raise RuntimeError("Qualification feed exceeds bounded catch-up")
-    stopped = ["workflow", "repair", "publisher", "activity", "connector", "projection"]
+    stopped = [
+        "workflow",
+        "repair",
+        "publisher",
+        "activity",
+        "connector",
+        "projection",
+        "coordinator",
+        "scheduler",
+        "notifications",
+    ]
     compose("stop", *stopped)
     process = None
     try:
@@ -71,6 +89,7 @@ def main():
             stderr=subprocess.PIPE,
             text=True,
             creationflags=flags,
+            env=worker_environment(),
         )
         # The bounded worker commits before its readiness line, then stays live.
         from concurrent.futures import ThreadPoolExecutor

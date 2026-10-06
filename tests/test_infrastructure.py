@@ -31,13 +31,15 @@ def test_lambda_separation_limits_partial_failure_and_identity(resources):
     functions = [
         v["Properties"] for v in resources.values() if v["Type"] == "AWS::Lambda::Function"
     ]
-    assert len(functions) == 7
+    assert len(functions) == 11
     for fn in functions:
         assert fn["Runtime"] == "python3.12"
         assert fn.get("Architectures", ["x86_64"]) == ["x86_64"]
         expected_timeout = (
             180
             if fn["Handler"].endswith(".connectors")
+            else 100
+            if fn["Handler"].endswith(".coordinate")
             else 60
             if fn["Handler"].endswith((".projections", "lambda_handler.handler"))
             else 30

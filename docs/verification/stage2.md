@@ -1,5 +1,7 @@
 # Vérification de l'étape 2
 
+**Intégration des étapes 2 et 3 (2026-10-06)** : la validation du code réuni et des corrections supplémentaires est consignée dans [JRN-019](../../JOURNAL.md) et [artifact-evidence.json](artifact-evidence.json), renouvelé après les contrôles cumulatifs. Les 149 tests et les revues décrits ci-dessous sont les résultats historiques de la branche `f823a82` ; leurs scores ne sont pas attribués automatiquement à la fusion.
+
 Code de mémoire et connecteurs contrôlés, vérifié le **2026-10-06**. **149 tests réussis, aucune exclusion**, dont 14 intégrations DynamoDB Local ; Ruff, format et contrôle du diff réussis. Image Linux, bundle Lambda et template CDK reconstruits après les corrections de la PR #2 ; les deux nouvelles recettes Docker produisent **PASS**. Audit runtime : aucune vulnérabilité connue. [Revue indépendante : 9,4/10](stage2-review.md), aucun constat confirmé restant. [Empreintes et résultats](artifact-evidence.json).
 
 | Garantie | Preuve |
@@ -9,8 +11,13 @@ Code de mémoire et connecteurs contrôlés, vérifié le **2026-10-06**. **149 
 | Budget concurrent, devis/approbation exacts, rollback | `tests/test_stage2_actions.py`, `tests/test_stage2_integration.py` |
 | Réponse perdue après commit, révocation, génération, modification et annulation | Même tests, fournisseur persistant explicitement simulé |
 | OAuth, chiffrement, scopes, refresh révoqué, sync et push | `tests/test_stage2_calendar.py`, fournisseur fictif et HTTP MockTransport |
+| Perte d'appartenance/profil/génération, restauration concurrente et révocation durable | `tests/test_stage2_calendar.py`, `tests/test_stage2_integration.py` ; reprise après panne fournisseur et redémarrage |
+| Admission avant watch, notification initiale, réponse perdue/tardive et conflits de finalisation | `tests/test_stage2_calendar.py`, `tests/test_stage2_integration.py` ; aucun canal dupliqué pendant l'incertitude |
+| TTL effectif court et échéance conservée sans prolongation | `tests/test_stage2_calendar.py` ; réponse normale, perdue et tardive, reprise et renouvellement stable |
 | Titan 512, filtres S3, effets tardifs, réparation après arrêt, quotas et backoff | `tests/test_stage2_semantic_adapters.py`, doubles explicites et client Botocore intercepté |
 | Purge à expiration, expiration pendant put, vecteurs legacy et reprise sans quota d'embedding | `tests/test_stage2_memory.py`, `tests/test_stage2_semantic_adapters.py` ; fournisseurs explicitement factices |
+| Projection désactivée : intentions terminées et planification supprimée | `tests/test_stage2_memory.py`, `tests/test_stage2_integration.py` ; sans embedding ni vecteur |
+| Dates civiles extrêmes refusées et dates voisines portables | `tests/test_stage2_memory.py` ; 422 aux bornes, 200 pour les dates voisines |
 | Empreinte source portable LF/CRLF, tri POSIX et rejet d'une preuve devenue périmée | `tests/test_evidence.py`, contrôle `--check-source` exécuté en CI avant les builds |
 | Transactions effectives et reprise du registre | DynamoDB Local avec `KOYORI_INTEGRATION=1` |
 | Tables, IAM, KMS, S3 Vectors et rôles préparés | `tests/test_infrastructure.py`, template synthétisé sans compte |

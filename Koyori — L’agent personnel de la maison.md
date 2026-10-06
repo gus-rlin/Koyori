@@ -345,6 +345,14 @@ L’éligibilité personnelle reste à confirmer : majorité, résidence admissi
 
 ---
 
+## Avancement de la troisième partie au 6 octobre 2026
+
+La coordination est codée par API : objectifs naturels, plans déclaratifs validés et versionnés, spécialistes de lecture bornés, checkpoints persistants, attentes, routines civiles, amendement/pause/reprise/annulation et propositions d'apprentissage sourcées avec acceptation explicite. Les préférences et procédures apprises modifient le contexte des prochaines propositions sans augmenter les droits. L'activité et les notifications privées regroupées exposent les changements utiles ; le transport vocal et MCP reste à l'étape 4.
+
+Les plans bornés à 24 Ko sont conservés dans `Domain` et promus dans la transaction de checkpoint, au lieu d'un second stockage S3 des candidats. Le coordinateur Strands/Nova dispose de quotas durables et de sorties structurées ; Step Functions Standard et Scheduler sont intégrés au code et au CDK. Le coordinateur ne reçoit pas les credentials d'agenda, protégés dans le lecteur dédié. La configuration Nova US exige encore une décision de consentement/région pour les données réelles.
+
+Les recettes locales utilisent un planificateur déterministe simulé et le commerce simulé, jusqu'aux reçus de modification et d'annulation. Strands est réellement exercé avec un transport HTTP intercepté ; le modèle Nova réel, Google, IAM et les services AWS ne sont pas qualifiés à distance. Le contrôle de qualification Nova constate l'absence d'identifiants AWS, sans appel facturable. [Contrats et limites](docs/stage3.md), [vérifications](docs/verification/stage3.md) et JRN-018 distinguent cette implémentation de la vision et des qualifications restant nécessaires.
+
 ## Repères documentaires
 
 *Sources primaires consultées le 4 octobre 2026. Les capacités citées proviennent des documentations des éditeurs. Les dialogues, l’architecture et les orientations de produit décrivent la proposition à construire.*

@@ -43,6 +43,16 @@ class Settings:
     token_key_arn: str | None = None
     token_key_file: str = ".local/oauth-envelope.key"
     embedding_daily_limit: int = 200
+    planning_mode: str = "disabled"
+    planning_region: str = "us-east-1"
+    planning_model: str = "us.amazon.nova-2-lite-v1:0"
+    planning_daily_limit: int = 200
+    reasoning_task_limit: int = 16
+    coordinator_machine_arn: str | None = None
+    scheduler_group: str | None = None
+    scheduler_role_arn: str | None = None
+    scheduler_target_arn: str | None = None
+    calendar_reader_arn: str | None = None
 
     def __post_init__(self):
         if self.env not in {"local", "dev", "prod"}:
@@ -53,6 +63,17 @@ class Settings:
             raise ValueError("Invalid semantic mode")
         if not 1 <= self.embedding_daily_limit <= 10000:
             raise ValueError("Invalid embedding call ceiling")
+        if self.planning_mode not in {"disabled", "simulated", "aws"}:
+            raise ValueError("Invalid planner mode")
+        if self.env != "local" and self.planning_mode == "simulated":
+            raise ValueError("Simulated planner is local only")
+        if (
+            self.planning_region not in {"us-east-1", "us-east-2", "us-west-2"}
+            or self.planning_model != "us.amazon.nova-2-lite-v1:0"
+        ):
+            raise ValueError("Only the supported planning profile configuration is accepted")
+        if not 1 <= self.planning_daily_limit <= 10000 or not 2 <= self.reasoning_task_limit <= 64:
+            raise ValueError("Invalid reasoning call ceilings")
         if self.semantic_mode == "aws" and (self.env == "local" or not self.vector_bucket):
             raise ValueError("AWS semantic search requires an AWS environment and vector bucket")
         if self.env != "local" and self.semantic_mode == "simulated":
@@ -110,6 +131,16 @@ class Settings:
             token_key_arn=os.getenv("KOYORI_TOKEN_KEY_ARN"),
             token_key_file=os.getenv("KOYORI_TOKEN_KEY_FILE", ".local/oauth-envelope.key"),
             embedding_daily_limit=int(os.getenv("KOYORI_EMBEDDING_DAILY_LIMIT", "200")),
+            planning_mode=os.getenv("KOYORI_PLANNING_MODE", "simulated" if local else "disabled"),
+            planning_region=os.getenv("KOYORI_PLANNING_REGION", "us-east-1"),
+            planning_model=os.getenv("KOYORI_PLANNING_MODEL", "us.amazon.nova-2-lite-v1:0"),
+            planning_daily_limit=int(os.getenv("KOYORI_PLANNING_DAILY_LIMIT", "200")),
+            reasoning_task_limit=int(os.getenv("KOYORI_REASONING_TASK_LIMIT", "16")),
+            coordinator_machine_arn=os.getenv("KOYORI_COORDINATOR_MACHINE_ARN"),
+            scheduler_group=os.getenv("KOYORI_SCHEDULER_GROUP"),
+            scheduler_role_arn=os.getenv("KOYORI_SCHEDULER_ROLE_ARN"),
+            scheduler_target_arn=os.getenv("KOYORI_SCHEDULER_TARGET_ARN"),
+            calendar_reader_arn=os.getenv("KOYORI_CALENDAR_READER_ARN"),
         )
 
     def client(self, service: str):

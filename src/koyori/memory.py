@@ -218,8 +218,10 @@ class Memory(Service):
         rows, after, scanned = [], None, 0
         partitions = [(hkey(ctx.h), "MEMTIME#")]
         if start is not None:
-            first = datetime.fromtimestamp(start, UTC).date()
-            last = datetime.fromtimestamp(end - 1, UTC).date()
+            epoch = datetime(1970, 1, 1, tzinfo=UTC)
+            # Arithmetic avoids the narrower platform C timestamp range on Windows.
+            first = (epoch + timedelta(seconds=start)).date()
+            last = (epoch + timedelta(seconds=end - 1)).date()
             partitions = [
                 (f"MEMDAY#{ctx.h}#{(first + timedelta(days=i)).isoformat()}", "")
                 for i in reversed(range((last - first).days + 1))

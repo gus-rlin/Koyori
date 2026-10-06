@@ -12,6 +12,7 @@ dependencies = [
   "tzdata>=2026.1,<2027",
   "httpx>=0.28,<1",
   "cryptography>=46,<51",
+  "strands-agents>=1.57.2,<2",
 ]
 
 [dependency-groups]
