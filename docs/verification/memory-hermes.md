@@ -55,3 +55,7 @@ Lecture complémentaire des derniers scripts : **9/10 maintenu**. Une recette av
 ## Limites de qualification
 
 La démonstration utilise des données synthétiques, un commerce simulé et un filtre/apprentissage local FR/EN limité. Nova réel, exactitude des inférences, IAM exécuté, GSI distant, coûts, PITR AWS, voix réelle et raccordement frontend restent non qualifiés. L'activation automatique AWS est explicite ; le modèle ne reçoit aucun outil d'exécution. Aucun push, déploiement, achat, coût AWS observé ni contribution Open Source complémentaire publié.
+
+## Publication ultérieure
+
+Le 2026-10-06, à la demande de l'utilisateur, la branche est poussée et la [PR #5](https://github.com/gus-rlin/Koyori/pull/5) ouverte vers `main` ; actions consignées dans JRN-029. La PR inclut la base intégrée `e0f967b`, dont l'interface compagnon héritée, en plus du commit mémoire `d5b5015`. L'état « aucun push » ci-dessus décrit la livraison locale précédente. Les validations et empreintes locales restent celles de JRN-028 ; les checks GitHub sont déclenchés, leur résultat final reste à confirmer. Aucun code modifié ni fusion effectuée lors de cette publication.
