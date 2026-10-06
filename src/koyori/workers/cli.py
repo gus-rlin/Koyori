@@ -10,6 +10,13 @@ from koyori.workers.runtime import engine
 
 
 def tick(worker, role: str) -> int:
+    if role == "channels":
+        from koyori.privacy import Privacy
+        from koyori.realtime import Signals
+
+        Privacy(worker.domain).sweep()
+        Signals(worker.domain).sweep()
+        return 0
     if role in {"coordinator", "scheduler", "notifications"}:
         from koyori.workers.stage3_runtime import tick as stage3_tick
 
@@ -63,6 +70,7 @@ def main():
             "coordinator",
             "scheduler",
             "notifications",
+            "channels",
         ],
     )
     parser.add_argument("--once", action="store_true")

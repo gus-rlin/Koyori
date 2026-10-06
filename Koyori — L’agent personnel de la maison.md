@@ -353,6 +353,14 @@ Les plans bornés à 24 Ko sont conservés dans `Domain` et promus dans la trans
 
 Les recettes locales utilisent un planificateur déterministe simulé et le commerce simulé, jusqu'aux reçus de modification et d'annulation. Strands est réellement exercé avec un transport HTTP intercepté ; le modèle Nova réel, Google, IAM et les services AWS ne sont pas qualifiés à distance. Le contrôle de qualification Nova constate l'absence d'identifiants AWS, sans appel facturable. [Contrats et limites](docs/stage3.md), [vérifications](docs/verification/stage3.md) et JRN-018 distinguent cette implémentation de la vision et des qualifications restant nécessaires.
 
+## Avancement de la quatrième partie au 6 octobre 2026
+
+Les canaux MCP et WebSocket vocal sont codés sur le même domaine que l'API : admission, délégations, tickets à usage unique, tours persistants, mode personnel/partagé et consultation des objectifs après fermeture. L'agenda reste lu par le spécialiste existant ; les runtimes ne reçoivent pas les credentials des comptes. Le feed durable possède un rattrapage et des signaux AppSync préparés. Export personnel et effacement des souvenirs sont paginés, avec invalidation des anciennes sessions ; les preuves commerciales et textes d'objectifs ont une rétention distincte. La restauration applique les suppressions plus récentes et demeure en quarantaine.
+
+Décision de produit pour cette implémentation : la sortie vocale générative de Nova est supprimée et les annonces sont construites depuis les résultats sourcés puis synthétisées par Polly. Cette restriction évite une confirmation financière inventée et réduit la conversation libre ; elle doit être évaluée avec le PCM réel. La voix appelle directement la bibliothèque du domaine, tandis que MCP dispose de son transport standard propre. La vision d'un agent vocal personnel reste l'objectif ; ce choix de garde-fou ne démontre pas sa qualité conversationnelle.
+
+Les transcriptions, planificateurs et commerces des recettes locales sont simulés. Nova/Polly, AgentCore ARM64, AppSync, Cognito/Google réels et PITR AWS restent à qualifier ; aucun coût distant n'est observé et aucune intégration Alexa+ native n'est revendiquée. La préparation des deux mini-défis s'appuie sur [les observations des outils](docs/verification/hackathon-stage4.md). La [contribution complémentaire MCP proposée](contributions/mcp-authority-boundary/README.md) est une préparation locale Apache-2.0, sans publication ni PR ; l'ouverture du dépôt principal ne suffit pas. [Contrats](docs/stage4.md), [vérifications](docs/verification/stage4.md) et JRN-021 distinguent code livré et preuve distante restante.
+
 ## Repères documentaires
 
 *Sources primaires consultées le 4 octobre 2026. Les capacités citées proviennent des documentations des éditeurs. Les dialogues, l’architecture et les orientations de produit décrivent la proposition à construire.*

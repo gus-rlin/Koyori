@@ -56,7 +56,7 @@ class Tokens:
             else None
         )
 
-    def verify(self, token: str, *, identity: bool = False) -> dict:
+    def verify(self, token: str, *, identity: bool = False, resource: str | None = None) -> dict:
         try:
             header = jwt.get_unverified_header(token)
             if header.get("alg") != "RS256":
@@ -86,11 +86,14 @@ class Tokens:
                     raise jwt.InvalidTokenError
                 if (
                     claims.get("client_id") != self.settings.client_id
-                    or "koyori/control" not in claims.get("scope", "").split()
+                    or ("koyori/mcp" if resource else "koyori/control")
+                    not in claims.get("scope", "").split()
                 ):
                     raise jwt.InvalidTokenError
                 # Cognito access-token audience is optional unless resource binding is used.
-                if "aud" in claims and claims["aud"] != self.settings.audience:
+                if resource and claims.get("aud") != resource:
+                    raise jwt.InvalidTokenError
+                if not resource and "aud" in claims and claims["aud"] != self.settings.audience:
                     raise jwt.InvalidTokenError
             for field in ("iat", "exp", "auth_time"):
                 if type(claims[field]) is not int:

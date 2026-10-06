@@ -16,6 +16,10 @@ def tick(domain, role):
 def connectors(event, context):
     from koyori.workers.runtime import engine
 
+    if event.get("channelRead"):
+        from koyori.channel_tools import channel_calendar_read
+
+        return channel_calendar_read(engine().domain, event)
     if event.get("goalRead"):
         from koyori.workers.stage3_runtime import calendar_read
 

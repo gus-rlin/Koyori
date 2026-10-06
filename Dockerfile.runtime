@@ -1,0 +1,21 @@
+FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa AS uv
+FROM --platform=$BUILDPLATFORM python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b AS builder
+COPY --from=uv /uv /usr/local/bin/uv
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+COPY src ./src
+COPY scripts/start_runtime.py ./start_runtime.py
+ARG TARGETARCH
+RUN --mount=type=secret,id=trusted_ca \
+    case "$TARGETARCH" in arm64) target=aarch64-unknown-linux-gnu ;; amd64) target=x86_64-unknown-linux-gnu ;; *) exit 1 ;; esac \
+    && if [ -f /run/secrets/trusted_ca ]; then SSL_CERT_FILE=/run/secrets/trusted_ca uv --system-certs sync --python-platform "$target" --frozen --no-dev --no-editable; else uv sync --python-platform "$target" --frozen --no-dev --no-editable; fi
+
+FROM python:3.12.13-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
+WORKDIR /app
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/start_runtime.py /app/start_runtime.py
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HOME=/tmp
+ENV PATH="/app/.venv/bin:$PATH"
+USER 10001:10001
+CMD ["python", "start_runtime.py"]

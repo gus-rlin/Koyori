@@ -71,11 +71,11 @@ def register(app, domain, actor, context):
         saved = mutation(
             memory, request, ctx, normalized, lambda fresh: memory.create(fresh, normalized)
         )
-        return result(projection(memory.get(ctx, saved["id"])), 201)
+        return result(projection(memory.read(ctx, saved["id"])), 201)
 
     @app.get("/v1/memories/{mid}")
     def get_memory(mid: str, ctx: Ctx):
-        return result(projection(memory.get(ctx, mid)))
+        return result(projection(memory.read(ctx, mid)))
 
     @app.patch("/v1/memories/{mid}")
     def patch_memory(mid: str, body: MemoryPatch, request: Request, ctx: Ctx):
@@ -90,7 +90,7 @@ def register(app, domain, actor, context):
             version=version,
             authorize=lambda fresh: memory.get(fresh, mid, owner=True),
         )
-        return result(projection(memory.get(ctx, mid)))
+        return result(projection(memory.read(ctx, mid)))
 
     @app.delete("/v1/memories/{mid}")
     def delete_memory(mid: str, request: Request, ctx: Ctx):

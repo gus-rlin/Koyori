@@ -55,7 +55,9 @@ def initialize_keys(settings: Settings) -> None:
         cursor.chmod(0o600)
 
 
-def token(settings: Settings, principal: str, *, nonce=None, now=None, expires=600) -> str:
+def token(
+    settings: Settings, principal: str, *, nonce=None, now=None, expires=600, mcp=False
+) -> str:
     if settings.env != "local":
         raise ValueError("Synthetic issuer forbidden outside local")
     current = int(time.time()) if now is None else now
@@ -70,7 +72,11 @@ def token(settings: Settings, principal: str, *, nonce=None, now=None, expires=6
     if nonce:
         claims.update(nonce=nonce, aud=settings.client_id)
     else:
-        claims.update(client_id=settings.client_id, scope="koyori/control", aud=settings.audience)
+        claims.update(
+            client_id=settings.client_id,
+            scope="koyori/mcp" if mcp else "koyori/control",
+            aud=settings.mcp_resource if mcp else settings.audience,
+        )
     return jwt.encode(
         claims,
         (issuer_dir(settings) / "jwt-private.pem").read_bytes(),
@@ -182,6 +188,7 @@ def main():
     sub.add_parser("seed")
     tok = sub.add_parser("token")
     tok.add_argument("principal")
+    tok.add_argument("--mcp", action="store_true", help="Resource-bound local MCP access token")
     step = sub.add_parser("step-up")
     step.add_argument("principal")
     step.add_argument("household")
@@ -198,7 +205,7 @@ def main():
     if args.command == "seed":
         print(json.dumps(seed(settings), ensure_ascii=False))
     elif args.command == "token":
-        print(token(settings, args.principal))
+        print(token(settings, args.principal, mcp=args.mcp))
     else:
         print(
             json.dumps(

@@ -81,7 +81,10 @@ class FoundationStack(cdk.Stack):
             scopes=[
                 cognito.ResourceServerScope(
                     scope_name="control", scope_description="Koyori control API"
-                )
+                ),
+                cognito.ResourceServerScope(
+                    scope_name="mcp", scope_description="Resource-bound Koyori MCP"
+                ),
             ],
         )
         client = pool.add_client(
@@ -99,6 +102,12 @@ class FoundationStack(cdk.Stack):
                         resource,
                         cognito.ResourceServerScope(
                             scope_name="control", scope_description="Koyori control API"
+                        ),
+                    ),
+                    cognito.OAuthScope.resource_server(
+                        resource,
+                        cognito.ResourceServerScope(
+                            scope_name="mcp", scope_description="Resource-bound Koyori MCP"
                         ),
                     ),
                 ],
@@ -259,6 +268,16 @@ class FoundationStack(cdk.Stack):
                 tracing=lambdas.Tracing.ACTIVE,
             )
             functions[name] = fn
+            if name != "api":
+                fn.add_to_role_policy(
+                    iam.PolicyStatement(
+                        actions=["dynamodb:GetItem"],
+                        resources=[tables["Sessions"].table_arn],
+                        conditions={
+                            "ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["RESTORE_FENCE"]}
+                        },
+                    )
+                )
             # DynamoDB transaction permission is expressed by its underlying item operations.
             accessed = (
                 ("Delivery",)
@@ -519,6 +538,19 @@ class FoundationStack(cdk.Stack):
             create_default_stage=True,
         )
         stage_resource = api.default_stage.node.default_child
+        from infrastructure.channels import install
+
+        install(
+            self,
+            stage=stage,
+            tables=tables,
+            functions=functions,
+            cursor=cursor,
+            api=api,
+            environment=environment,
+            code_path=code_path,
+            callback_url=callback_url,
+        )
         for role in ("api", "connector"):
             functions[role].add_environment(
                 "KOYORI_GOOGLE_REDIRECT_URI", api.api_endpoint + "/v1/oauth/google/callback"

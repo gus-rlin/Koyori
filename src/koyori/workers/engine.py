@@ -150,6 +150,9 @@ class Engine:
                             ),
                         ]
                     )
+                    from koyori.realtime import signal_intent
+
+                    changes.append(signal_intent(self.domain, ctx, seq))
             try:
                 self.store.transact(changes)
                 return

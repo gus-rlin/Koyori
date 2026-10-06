@@ -92,6 +92,15 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
         request.state.request_id = uuid.uuid4().hex
         start = time.monotonic()
         try:
+            restore = domain.store.get("Sessions", ("RESTORE_FENCE", "META"))
+            if (
+                request.method in {"POST", "PATCH", "PUT", "DELETE"}
+                and restore
+                and restore.get("blocked")
+            ):
+                raise Problem(
+                    503, "RESTORE_OFFLINE", "Restored namespace awaits operator reconciliation."
+                )
             # Read the stream with a hard bound even if Content-Length is missing or forged.
             chunks, size = [], 0
             async for chunk in request.stream():
@@ -477,4 +486,7 @@ def create_app(*, domain: Domain | None = None, tokens: Tokens | None = None) ->
     from koyori.control.stage3_routes import register as register_stage3
 
     register_stage3(app, domain, context)
+    from koyori.control.stage4_routes import register as register_stage4
+
+    register_stage4(app, domain, tokens, context)
     return app
