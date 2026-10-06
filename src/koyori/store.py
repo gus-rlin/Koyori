@@ -26,6 +26,7 @@ class Change:
     key: Key
     expected: int | None
     item: dict | None = None  # None is a condition check, not a deletion.
+    delete: bool = False
 
 
 def put(table: str, item: dict, previous: dict | None = None) -> Change:
@@ -34,6 +35,11 @@ def put(table: str, item: dict, previous: dict | None = None) -> Change:
 
 def guard(table: str, item: dict) -> Change:
     return Change(table, (item["PK"], item["SK"]), item["rev"])
+
+
+def remove(table: str, item: dict) -> Change:
+    """Conditionally remove a derived row; canonical records retain their tombstones."""
+    return Change(table, (item["PK"], item["SK"]), item["rev"], delete=True)
 
 
 def revised(item: dict, **values) -> dict:
@@ -63,9 +69,14 @@ def unique(changes: list[Change]) -> list[Change]:
         old = result.get(key)
         if old and old.expected != change.expected:
             raise Conflict("Inconsistent transaction snapshots")
-        if old and old.item and change.item and old.item != change.item:
+        if (
+            old
+            and (old.item or old.delete)
+            and (change.item or change.delete)
+            and (old.item != change.item or old.delete != change.delete)
+        ):
             raise ValueError("Duplicate mutation")
-        if not old or change.item:
+        if not old or change.item or change.delete:
             result[key] = change
     return list(result.values())
 
@@ -156,7 +167,7 @@ class DynamoStore:
                 operations.append({"Put": args})
             else:
                 args["Key"] = self.encode({"PK": change.key[0], "SK": change.key[1]})
-                operations.append({"ConditionCheck": args})
+                operations.append({"Delete" if change.delete else "ConditionCheck": args})
         try:
             self.client.transact_write_items(TransactItems=operations)
         except ClientError as exc:
@@ -262,5 +273,7 @@ class MemoryStore:
                 if (old["rev"] if old else None) != change.expected:
                     raise Conflict
             for change in changes:
-                if change.item is not None:
+                if change.delete:
+                    self.rows.pop((change.table, change.key), None)
+                elif change.item is not None:
                     self.rows[(change.table, change.key)] = copy.deepcopy(change.item)

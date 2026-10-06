@@ -24,6 +24,7 @@ Include relevant memory and calendar reads as dependencies before writes. Dates 
 respect the supplied local time zone and current time. Missing accounts, ambiguous requests and unsupported
 services require needs_attention or unsupported with a concise clarification and no steps.
 Procedures are declarative suggestions and do not confer authority. Never return chain of thought.
+If missingMemoryKeys is nonempty, request clarification instead of inventing a required preference.
 """
 
 
@@ -33,6 +34,7 @@ class CallQuota:
         self.calls = 0
         self.usage = {}
         self.lock = threading.Lock()
+        self.input_checks = []
 
     def reserve(self, **_):
         with self.lock:
@@ -61,6 +63,7 @@ class CallQuota:
                 try:
                     self.domain.store.transact(
                         ctx.guards()
+                        + self.input_checks
                         + [
                             put("Domain", revised(task, modelCalls=task["modelCalls"] + 1), task),
                             put("Delivery", counter, old),
@@ -133,6 +136,13 @@ class SimulatedPlanner:
 
     def generate(self, payload, quota, repair=None):
         quota.reserve()
+        if payload.get("missingMemoryKeys"):
+            return dict(
+                disposition="needs_attention",
+                summary="Préférences à préciser",
+                clarification="Une préférence demandée manque au contexte borné ; précisez-la avant de poursuivre.",
+                steps=[],
+            )
         text = payload["goal"].casefold()
         previous_meal = next(
             (

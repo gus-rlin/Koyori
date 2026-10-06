@@ -79,7 +79,8 @@ def test_restore_old_snapshot_waits_for_accepted_erasure_to_finish(dynamo, tmp_p
     h.domain.store.transact(ctx.guards() + erasing)
     with pytest.raises(ValueError, match="Complete pending memory erasures"):
         erasure_ledger(h.domain.store)
-    Privacy(h.domain).sweep()
+    for _ in range(4):
+        Privacy(h.domain).sweep()
     ledger = erasure_ledger(h.domain.store)
     target = DynamoStore(replace(h.settings, prefix=f"KoyoriRestore{uuid4().hex}"))
     try:

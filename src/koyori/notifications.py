@@ -54,7 +54,7 @@ class Notifications(Service):
         )
         return {"rev": item["rev"]}, [put("Domain", item, old)], False
 
-    def queue(self, ctx, kind, identifier, status):
+    def queue(self, ctx, kind, identifier, status, *, staged=None):
         policy = self.policy(ctx)
         settings = policy or NotificationPolicy(timeZone=ctx.household["timeZone"]).model_dump()
         group = settings["groupSeconds"]
@@ -62,7 +62,8 @@ class Notifications(Service):
         for chunk in range(64):
             nid = digest({"h": ctx.h, "p": ctx.actor, "bucket": bucket, "chunk": chunk})[:32]
             key = (f"NOTIFY#{ctx.h}#{ctx.actor}", f"BATCH#{nid}")
-            old = self.store.get("Delivery", key)
+            canonical = self.store.get("Delivery", key)
+            old = staged[key].item if staged is not None and key in staged else canonical
             entries = list(old["entries"]) if old else []
             if len(entries) < 16 or any(
                 (e["kind"], e["id"]) == (kind, identifier) for e in entries
@@ -76,7 +77,7 @@ class Notifications(Service):
         due = delivery_time(self.domain.now() + group, settings)
         item = row(
             *key,
-            rev=old["rev"] + 1 if old else 1,
+            rev=canonical["rev"] + 1 if canonical else 1,
             id=nid,
             h=ctx.h,
             owner=ctx.actor,
@@ -87,7 +88,10 @@ class Notifications(Service):
             GSI1PK=f"NOTIFYRUN#{int(nid[:8], 16) % self.domain.settings.shards}",
             GSI1SK=f"{due:020d}#{nid}",
         )
-        writes = [put("Delivery", item, old)]
+        change = put("Delivery", item, canonical)
+        if staged is not None:
+            staged[key] = change
+        writes = [change]
         if policy:
             writes.append(guard("Domain", policy))
         return writes

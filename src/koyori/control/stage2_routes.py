@@ -18,6 +18,7 @@ from koyori.stage2_contracts import (
     CalendarAuthorize,
     ContextQuery,
     MemoryPatch,
+    MemorySearch,
     MemoryWrite,
     QuoteCreate,
     SimConnection,
@@ -72,6 +73,12 @@ def register(app, domain, actor, context):
             memory, request, ctx, normalized, lambda fresh: memory.create(fresh, normalized)
         )
         return result(projection(memory.read(ctx, saved["id"])), 201)
+
+    @app.post("/v1/memories/search")
+    def search_memories(body: MemorySearch, ctx: Ctx):
+        from koyori.lexical import Lexical
+
+        return Lexical(domain).search(ctx, body.model_dump())
 
     @app.get("/v1/memories/{mid}")
     def get_memory(mid: str, ctx: Ctx):

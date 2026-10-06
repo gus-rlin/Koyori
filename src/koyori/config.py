@@ -48,6 +48,8 @@ class Settings:
     planning_model: str = "us.amazon.nova-2-lite-v1:0"
     planning_daily_limit: int = 200
     reasoning_task_limit: int = 16
+    learning_mode: str = "disabled"
+    learning_daily_limit: int = 20
     coordinator_machine_arn: str | None = None
     scheduler_group: str | None = None
     scheduler_role_arn: str | None = None
@@ -66,6 +68,12 @@ class Settings:
     realtime_api_id: str | None = None
 
     def __post_init__(self):
+        if self.learning_mode not in {"disabled", "simulated", "aws"}:
+            raise ValueError("Invalid learning mode")
+        if self.env != "local" and self.learning_mode == "simulated":
+            raise ValueError("Simulated learning is local only")
+        if not 1 <= self.learning_daily_limit <= 20:
+            raise ValueError("Invalid learning call ceiling")
         if self.speech_mode not in {"disabled", "simulated", "aws"}:
             raise ValueError("Invalid speech mode")
         if self.env != "local" and self.speech_mode == "simulated":
@@ -164,6 +172,8 @@ class Settings:
             planning_model=os.getenv("KOYORI_PLANNING_MODEL", "us.amazon.nova-2-lite-v1:0"),
             planning_daily_limit=int(os.getenv("KOYORI_PLANNING_DAILY_LIMIT", "200")),
             reasoning_task_limit=int(os.getenv("KOYORI_REASONING_TASK_LIMIT", "16")),
+            learning_mode=os.getenv("KOYORI_LEARNING_MODE", "disabled"),
+            learning_daily_limit=int(os.getenv("KOYORI_LEARNING_DAILY_LIMIT", "20")),
             coordinator_machine_arn=os.getenv("KOYORI_COORDINATOR_MACHINE_ARN"),
             scheduler_group=os.getenv("KOYORI_SCHEDULER_GROUP"),
             scheduler_role_arn=os.getenv("KOYORI_SCHEDULER_ROLE_ARN"),

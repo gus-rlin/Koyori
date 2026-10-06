@@ -211,6 +211,7 @@ class FoundationStack(cdk.Stack):
                     max_event_age=cdk.Duration.hours(24),
                 )
             )
+        learning_enabled = self.node.try_get_context("learningEnabled")
         environment = {
             "KOYORI_ENV": stage,
             "KOYORI_TABLE_PREFIX": prefix,
@@ -221,6 +222,9 @@ class FoundationStack(cdk.Stack):
             "KOYORI_EVENT_BUS": bus.event_bus_name,
             "KOYORI_WORKFLOW_QUEUE_URL": queues["workflow"].queue_url,
             "KOYORI_ACTIVITY_QUEUE_URL": queues["activity"].queue_url,
+            "KOYORI_LEARNING_MODE": "aws"
+            if learning_enabled is True or learning_enabled == "true"
+            else "disabled",
         }
         code_path = Path(__file__).resolve().parents[1] / "artifacts" / "lambda"
         if not (code_path / "koyori").is_dir():
@@ -238,6 +242,7 @@ class FoundationStack(cdk.Stack):
             "dispatch": "koyori.workers.stage3_runtime.dispatch",
             "scheduler": "koyori.workers.stage3_runtime.schedules",
             "notifications": "koyori.workers.stage3_runtime.notify",
+            "learning": "koyori.workers.memory_runtime.learn",
         }.items():
             group = logs.LogGroup(
                 self,
@@ -259,7 +264,7 @@ class FoundationStack(cdk.Stack):
                     else 100
                     if name == "coordinator"
                     else 60
-                    if name in {"api", "projection"}
+                    if name in {"api", "projection", "learning"}
                     else 30
                 ),
                 memory_size=256,
@@ -271,7 +276,7 @@ class FoundationStack(cdk.Stack):
             if name != "api":
                 fn.add_to_role_policy(
                     iam.PolicyStatement(
-                        actions=["dynamodb:GetItem"],
+                        actions=["dynamodb:GetItem", "dynamodb:ConditionCheckItem"],
                         resources=[tables["Sessions"].table_arn],
                         conditions={
                             "ForAllValues:StringEquals": {"dynamodb:LeadingKeys": ["RESTORE_FENCE"]}
@@ -292,6 +297,7 @@ class FoundationStack(cdk.Stack):
                     "dispatch",
                     "scheduler",
                     "notifications",
+                    "learning",
                 }
                 else ("Domain", "Delivery", "Connections")
                 if name == "connector"
@@ -319,6 +325,18 @@ class FoundationStack(cdk.Stack):
             )
             if name in {"publisher", "repair"}:
                 bus.grant_put_events_to(fn)
+            if name == "projection":
+                fn.add_to_role_policy(
+                    iam.PolicyStatement(
+                        actions=["dynamodb:DeleteItem"],
+                        resources=[tables["Domain"].table_arn],
+                        conditions={
+                            "ForAllValues:StringLike": {
+                                "dynamodb:LeadingKeys": ["LEX#*", "LEXDOC#*"]
+                            }
+                        },
+                    )
+                )
             if name == "api":
                 cursor.grant_read(fn)
             if name in {"api", "connector"}:
@@ -474,6 +492,19 @@ class FoundationStack(cdk.Stack):
                 ],
             )
         )
+        functions["learning"].add_environment("KOYORI_PLANNING_REGION", "us-east-1")
+        functions["learning"].add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    f"arn:{self.partition}:bedrock:us-east-1:{self.account}:inference-profile/us.amazon.nova-2-lite-v1:0",
+                    *[
+                        f"arn:{self.partition}:bedrock:{region}::foundation-model/amazon.nova-2-lite-v1:0"
+                        for region in ("us-east-1", "us-east-2", "us-west-2")
+                    ],
+                ],
+            )
+        )
         schedule_group = scheduler.CfnScheduleGroup(
             self, "WakeSchedules", name=f"koyori-{stage}-wakes"
         )
@@ -524,7 +555,14 @@ class FoundationStack(cdk.Stack):
                 conditions={"StringEquals": {"iam:PassedToService": "scheduler.amazonaws.com"}},
             )
         )
-        for role in ("connector", "projection", "dispatch", "scheduler", "notifications"):
+        for role in (
+            "connector",
+            "projection",
+            "dispatch",
+            "scheduler",
+            "notifications",
+            "learning",
+        ):
             events.Rule(
                 self,
                 f"{role}Schedule",

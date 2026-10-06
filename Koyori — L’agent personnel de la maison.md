@@ -303,6 +303,8 @@ Home Assistant Assist constitue une piste à étudier pour cette expérimentatio
 
 Dots, Grok Bot, ChatGPT et Hermes sont des références de conception. Leur présence dans le document n’implique ni partenariat, ni import automatique de leurs mémoires, ni disponibilité de toutes leurs fonctions pour une intégration externe.
 
+**Amélioration mémoire au 6 octobre 2026 (JRN-028)** : le contexte durable lit les préférences et procédures canoniques indépendamment des échanges récents ; un index lexical DynamoDB rappelle les archives avec droits et sources actuels. L'inspiration [Hermes, commit 4787e4d](https://github.com/NousResearch/hermes-agent/tree/4787e4d56fc8d9265d4c7d3c0fe5accee86b4078), consultée ce jour, est adaptée à l'isolation du foyer. Un worker distinct analyse les échanges personnels et objectifs réussis pour proposer un apprentissage privé, jamais mémorisé avant acceptation explicite. Les corrections conservent partage et expiration ; procédures et modèle ne donnent aucune permission. Deux requêtes SDK à vie par intention et vingt par personne/jour UTC bornent le travail automatique. Effacement et restauration couvrent désormais propositions, jobs et générations de confidentialité, avec réindexation des survivants sous quarantaine. Modes local simulé et adaptateur Nova testé par transport intercepté ; qualité linguistique et accès AWS réels restent à qualifier, activation distante désactivée par défaut. [Contrats et limites](docs/memory-hermes.md), [preuves](docs/verification/memory-hermes.md).
+
 ---
 
 ## 11. Candidature au hackathon Amazon Developer 2026
@@ -361,6 +363,12 @@ Décision de produit pour cette implémentation : la sortie vocale générative 
 
 Les transcriptions, planificateurs et commerces des recettes locales sont simulés. Nova/Polly, AgentCore ARM64, AppSync, Cognito/Google réels et PITR AWS restent à qualifier ; aucun coût distant n'est observé et aucune intégration Alexa+ native n'est revendiquée. La préparation des deux mini-défis s'appuie sur [les observations des outils](docs/verification/hackathon-stage4.md). La [contribution complémentaire MCP proposée](contributions/mcp-authority-boundary/README.md) est une préparation locale Apache-2.0, sans publication ni PR ; l'ouverture du dépôt principal ne suffit pas. [Contrats](docs/stage4.md), [vérifications](docs/verification/stage4.md) et JRN-021 distinguent code livré et preuve distante restante.
 
+## Interface compagnon au 6 octobre 2026
+
+Une première interface React/TypeScript/Vite est disponible dans [apps/web](apps/web/README.md), réunie avec le backend sur la branche de travail (JRN-027). Elle propose une vue du jour, le suivi des demandes, une décision sur un panier, la correction des souvenirs, les routines et les services. La direction visuelle argent/sauge et la photographie d’intérieur soutiennent une présence domestique calme ; le texte sert de parcours de démonstration accessible.
+
+Cette livraison est une **démonstration interactive autonome**, avec fixtures synthétiques et état limité à l’onglet. Elle n’est pas encore reliée au backend, à une identité réelle, à Google, à un commerçant ni à la voix. Le microphone n’est jamais activé. Les accords et modifications simulés ne constituent ni une autorisation métier ni un reçu fournisseur. La voix reste le point d’accès cible ; son raccordement aux contrats de l’étape 4 reste à réaliser. Voir JRN-026 et le [rapport de vérification](docs/verification/interface.md).
+
 ## Repères documentaires
 
 *Sources primaires consultées le 4 octobre 2026. Les capacités citées proviennent des documentations des éditeurs. Les dialogues, l’architecture et les orientations de produit décrivent la proposition à construire.*
@@ -376,4 +384,3 @@ Les transcriptions, planificateurs et commerces des recettes locales sont simul�
 9. **Home Assistant** — [Assist](https://www.home-assistant.io/voice_control/) : interface vocale domestique.
 10. **Wu et al.** — [LongMemEval](https://arxiv.org/abs/2410.10813), 2024, révisé en 2025 : évaluation de la mémoire sur la durée.
 11. **Yao et al.** — [τ-bench](https://arxiv.org/abs/2406.12045), 2024 : vérification et répétabilité des tâches.
-

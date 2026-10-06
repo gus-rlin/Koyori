@@ -1,5 +1,6 @@
 """Canonical sourced memory; derived search results are always reauthorized and rehydrated."""
 
+import json
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,117 @@ class Memory(Service):
             guard("Domain", item),
             guard("Domain", fence) if fence else Change("Domain", key, None),
         ]
+
+    def disclosure_fence(self):
+        key = ("RESTORE_FENCE", "META")
+        fence = self.store.get("Sessions", key)
+        if fence and fence.get("blocked"):
+            raise Problem(503, "RESTORE_OFFLINE", "Restored namespace is offline.")
+        return [guard("Sessions", fence) if fence else Change("Sessions", key, None)]
+
+    def day_range(self, ctx, value=None):
+        zone = ZoneInfo(ctx.profile.get("timeZone", ctx.household["timeZone"]))
+        if not value:
+            return None, None, zone
+        day = (
+            datetime.fromtimestamp(self.domain.now(), zone).date() - timedelta(days=1)
+            if value == "yesterday"
+            else date.fromisoformat(value)
+        )
+        return (
+            int(datetime.combine(day, time(), zone).timestamp()),
+            int(datetime.combine(day + timedelta(days=1), time(), zone).timestamp()),
+            zone,
+        )
+
+    def context_value(self, ctx, item):
+        value = projection(item)
+        checks = self.read_checks(ctx, item)
+        try:
+            linked, authority = self.source_authority(ctx, item["source"])
+        except Problem as exc:
+            if exc.status not in {403, 404}:
+                raise
+            linked, authority = None, []
+        value["sourceStatus"] = (
+            "available" if linked or item["source"]["kind"] == "declaration" else "absent"
+        )
+        if linked:
+            value["linkedState"] = {
+                k: linked[k] for k in ("id", "rev", "status", "receipt") if k in linked
+            }
+        return value, checks + authority
+
+    def core(self, ctx, body, keys=()):
+        """Read stable slots rather than the recent exchange archive; never persist a prompt copy."""
+        from koyori.lexical import words
+
+        entries, scanned, truncated = {}, 0, False
+        requested = set(keys) | ({body["key"]} if body.get("key") else set())
+        # Direct lookups ensure explicit keys survive a bounded slot discovery.
+        slots = []
+        for actor in ctx.household["memberIds"]:
+            for kind in ("preference", "procedure"):
+                for key in requested:
+                    slot = self.store.get("Domain", (hkey(ctx.h), f"MEMKEY#{actor}#{kind}#{key}"))
+                    if slot:
+                        slots.append(slot)
+        # Other members must not exhaust discovery before the current profile is scanned.
+        actors = sorted(ctx.household["memberIds"], key=lambda actor: actor != ctx.actor)
+        for actor in actors:
+            after = None
+            while scanned < 500:
+                page, after = self.store.query(
+                    "Domain",
+                    hkey(ctx.h),
+                    prefix=f"MEMKEY#{actor}#",
+                    after=after,
+                    limit=min(50, 500 - scanned),
+                )
+                slots.extend(page)
+                scanned += len(page)
+                if not after:
+                    break
+            truncated |= bool(after) or scanned >= 500
+        for slot in slots:
+            if slot.get("deleted"):
+                continue
+            try:
+                item = self.get(ctx, slot["memoryId"])
+            except Problem as exc:
+                if exc.status != 404:
+                    raise
+                continue
+            if body.get("key") and item["key"] != body["key"]:
+                continue
+            entries[item["id"]] = item
+        terms = words(body.get("query") or "")
+        ranked = sorted(
+            entries.values(),
+            key=lambda x: (
+                x["key"] in requested,
+                len(terms & words(x["text"])),
+                ctx.profile["kind"] == "personal" and x["owner"] == ctx.actor,
+                x["kind"] == "preference",
+                x["updatedAt"],
+                x["id"],
+            ),
+            reverse=True,
+        )
+        selected, checks, used = [], [], 0
+        budget = min(8000, body["maxCharacters"])
+        for item in ranked:
+            value, authority = self.context_value(ctx, item)
+            size = len(json.dumps(value, ensure_ascii=False))
+            if value["sourceStatus"] != "available" or used + size > budget:
+                truncated = True
+                continue
+            selected.append(value)
+            checks.extend(authority)
+            used += size
+            if len(selected) == 8:
+                break
+        return selected, checks, used, truncated or len(entries) > len(selected)
 
     def read(self, ctx, mid):
         item = self.get(ctx, mid)
@@ -124,6 +236,11 @@ class Memory(Service):
             self.domain.event(ctx, mid, 1, kind="memory"),
         ]
         writes.extend(source_checks)
+        from koyori.auto_learning import AutoLearning
+        from koyori.lexical import Lexical
+
+        writes.extend(Lexical(self.domain).enqueue(item))
+        writes.extend(AutoLearning(self.domain).enqueue(ctx, item, "memory"))
         if item["key"] and item["kind"] != "exchange":
             slot_key = (hkey(ctx.h), f"MEMKEY#{ctx.actor}#{item['kind']}#{item['key']}")
             slot = self.store.get("Domain", slot_key)
@@ -200,6 +317,12 @@ class Memory(Service):
             self.domain.event(ctx, mid, new["rev"], kind="memory"),
         ]
         writes.extend(source_checks)
+        from koyori.auto_learning import AutoLearning
+        from koyori.lexical import Lexical
+
+        writes.extend(Lexical(self.domain).enqueue(new))
+        if not delete:
+            writes.extend(AutoLearning(self.domain).enqueue(ctx, new, "memory"))
         if not delete:
             writes.append(fence)
         if delete and old["key"] and old["kind"] != "exchange":
@@ -238,16 +361,10 @@ class Memory(Service):
 
     def context(self, ctx, body, semantic=None):
         """Return a bounded source-backed context. Day boundaries follow local civil time."""
-        zone = ZoneInfo(ctx.profile.get("timeZone", ctx.household["timeZone"]))
-        start = end = None
-        if body.get("day"):
-            day = (
-                datetime.fromtimestamp(self.domain.now(), zone).date() - timedelta(days=1)
-                if body["day"] == "yesterday"
-                else date.fromisoformat(body["day"])
-            )
-            start = int(datetime.combine(day, time(), zone).timestamp())
-            end = int(datetime.combine(day + timedelta(days=1), time(), zone).timestamp())
+        start, end, zone = self.day_range(ctx, body.get("day"))
+        core, core_checks, core_used, core_truncated = (
+            self.core(ctx, body) if body.get("includeCore") else ([], [], 0, False)
+        )
         rows, after, scanned = [], None, 0
         partitions = [(hkey(ctx.h), "MEMTIME#")]
         if start is not None:
@@ -299,8 +416,25 @@ class Memory(Service):
             if body.get("query") and body["query"].casefold() not in current["text"].casefold():
                 continue
             candidates.append(current)
+        lexical_incomplete = False
+        if body.get("query"):
+            from koyori.lexical import Lexical, words
+
+            terms = sorted(words(body["query"]), key=lambda t: (-len(t), t))
+            if terms:
+                lexical = Lexical(self.domain).search(
+                    ctx, {**body, "query": " ".join(terms[:8]), "cursor": None, "kinds": []}
+                )
+                lexical_incomplete = lexical["truncated"] or len(terms) > 8
+                for found in lexical["items"]:
+                    try:
+                        candidates.append(self.get(ctx, found["id"]))
+                    except Problem as exc:
+                        if exc.status != 404:
+                            raise
         semantic_status = "not-requested"
-        if body.get("query") and semantic and len(candidates) < body["limit"]:
+        semantic_rank = {}
+        if body.get("query") and semantic:
             try:
                 recalled = semantic.search(ctx, body["query"])
                 semantic_status = "available"
@@ -309,47 +443,50 @@ class Memory(Service):
                     raise
                 recalled = []
                 semantic_status = exc.code
-            for candidate in recalled:
+            for rank, candidate in enumerate(recalled):
                 if (start is None or start <= candidate["occurredAt"] < end) and (
                     not body.get("key") or candidate.get("key") == body["key"]
                 ):
                     candidates.append(candidate)
+                    semantic_rank[candidate["id"]] = len(recalled) - rank
         unique = {item["id"]: item for item in candidates}
-        selected, missing_sources, used, checks = [], [], 0, []
-        for item in sorted(unique.values(), key=lambda x: (x["occurredAt"], x["id"]), reverse=True):
-            linked = None
-            try:
-                linked = self.source(ctx, item["source"])
-            except Problem as exc:
-                if exc.status not in {403, 404}:
-                    raise
-                missing_sources.append(item["id"])
-            value = projection(item)
-            value["sourceStatus"] = (
-                "available" if linked or item["source"]["kind"] == "declaration" else "absent"
-            )
-            if linked:
-                value["linkedState"] = {
-                    k: linked[k] for k in ("id", "rev", "status", "receipt") if k in linked
-                }
-            import json
+        selected, missing_sources, used, checks = [], [], core_used, list(core_checks)
+        from koyori.lexical import words
 
+        terms = words(body.get("query") or "")
+        for item in sorted(
+            unique.values(),
+            key=lambda x: (
+                len(terms & words(x["text"])),
+                semantic_rank.get(x["id"], 0),
+                x["occurredAt"],
+                x["id"],
+            ),
+            reverse=True,
+        ):
+            if item["id"] in {c["id"] for c in core}:
+                continue
+            value, authority = self.context_value(ctx, item)
+            if value["sourceStatus"] == "absent":
+                missing_sources.append(item["id"])
             size = len(json.dumps(value, ensure_ascii=False))
             if used + size > body["maxCharacters"]:
                 continue
             selected.append(value)
-            checks.extend(self.read_checks(ctx, item))
-            if linked:
-                _, authority = self.source_authority(ctx, item["source"])
-                checks.extend([guard("Domain", linked), *authority])
+            checks.extend(authority)
             used += size
-            if len(selected) >= body["limit"]:
+            if len(selected) >= min(body["limit"], 14 - len(core)):
                 break
-        self.store.transact(ctx.guards() + checks)
+        self.store.transact(ctx.guards() + self.disclosure_fence() + checks)
         return {
             "items": selected,
+            "coreItems": core,
+            "coreTruncated": core_truncated,
             "missingSources": missing_sources[:8],
-            "truncated": archive_truncated or len(unique) > len(selected),
+            "truncated": archive_truncated
+            or lexical_incomplete
+            or core_truncated
+            or bool(set(unique) - {i["id"] for i in selected + core}),
             "timeZone": str(zone),
             "range": {"start": start, "end": end},
             "characters": used,
