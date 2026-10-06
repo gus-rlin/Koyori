@@ -20,6 +20,9 @@ x-runtime: &runtime
     KOYORI_TOKEN_KEY_FILE: /state/provider/envelope.key
     KOYORI_SEMANTIC_MODE: simulated
     KOYORI_PLANNING_MODE: simulated
+    KOYORI_SPEECH_MODE: simulated
+    KOYORI_VOICE_URL: ws://127.0.0.1:${KOYORI_VOICE_PORT:-8099}/ws
+    KOYORI_MCP_RESOURCE: http://127.0.0.1:${KOYORI_API_PORT:-8088}/mcp
   depends_on:
     bootstrap: {condition: service_completed_successfully}
   restart: unless-stopped
@@ -65,6 +68,15 @@ services:
   publisher:
     <<: *runtime
     command: ["python", "-m", "koyori.workers.cli", "publisher"]
+  voice:
+    <<: *runtime
+    ports: ["127.0.0.1:${KOYORI_VOICE_PORT:-8099}:8080"]
+    command: ["uvicorn", "koyori.voice:create_voice_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--no-access-log", "--ws-max-size", "8192", "--ws-max-queue", "4"]
+    volumes: ["public-keys:/state/keys:ro"]
+  channels:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "channels"]
+    volumes: ["public-keys:/state/keys:ro"]
   workflow:
     <<: *runtime
     command: ["python", "-m", "koyori.workers.cli", "workflow"]

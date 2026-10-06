@@ -9,7 +9,7 @@ from koyori.domain import hkey, projection, row, uid
 from koyori.errors import Problem, missing
 from koyori.stage2 import Service
 from koyori.stage2_contracts import MemoryPatch
-from koyori.store import guard, put, revised
+from koyori.store import Change, guard, put, revised
 
 
 class Memory(Service):
@@ -17,11 +17,30 @@ class Memory(Service):
         item = self.store.get("Domain", (hkey(ctx.h), f"MEMORY#{mid}"))
         if not item or (item.get("deleted") and not tombstone):
             raise missing()
+        fence = self.store.get("Domain", (hkey(ctx.h), f"PRIVACY#{item['owner']}"))
+        if not tombstone and fence and fence["status"] == "ERASING":
+            raise missing()
         own = item["owner"] == ctx.actor and ctx.profile["kind"] == "personal"
         if not own and (owner or item["visibility"] != "household"):
             raise missing()
         if not tombstone and item.get("validUntil") and item["validUntil"] <= self.domain.now():
             raise missing()
+        return item
+
+    def read_checks(self, ctx, item):
+        """A disclosure must lose to erasure accepted after its content was read."""
+        key = (hkey(ctx.h), f"PRIVACY#{item['owner']}")
+        fence = self.store.get("Domain", key)
+        if fence and fence["status"] == "ERASING":
+            raise missing()
+        return [
+            guard("Domain", item),
+            guard("Domain", fence) if fence else Change("Domain", key, None),
+        ]
+
+    def read(self, ctx, mid):
+        item = self.get(ctx, mid)
+        self.store.transact(ctx.guards() + self.read_checks(ctx, item))
         return item
 
     def index_intent(self, item, old=None):
@@ -51,9 +70,14 @@ class Memory(Service):
         if source["kind"] == "task":
             return self.domain.task_access(ctx, source["id"])
         item = self.source(ctx, source)
+        if source["kind"] == "memory":
+            return item, self.read_checks(ctx, item)
         return item, [guard("Domain", item)] if item else []
 
     def create(self, ctx, body):
+        from koyori.privacy import memory_fence
+
+        fence = memory_fence(self, ctx)
         now = self.domain.now()
         if body.get("occurredAt") and body["occurredAt"] > now:
             raise Problem(422, "INVALID_TIME", "An exchange cannot be in the future.")
@@ -85,6 +109,7 @@ class Memory(Service):
             deleted=False,
         )
         writes = [
+            fence,
             put("Domain", item),
             put("Domain", row(hkey(ctx.h), f"MEMTIME#{item['occurredAt']:020d}#{mid}", id=mid)),
             put(
@@ -125,6 +150,9 @@ class Memory(Service):
         if old["deleted"]:
             raise Problem(409, "MEMORY_DELETED", "The memory has already been erased.")
         if not delete:
+            from koyori.privacy import memory_fence
+
+            fence = memory_fence(self, ctx)
             try:
                 body = MemoryPatch.model_validate(
                     {k: body.get(k, old[k]) for k in ("text", "steps", "visibility", "validUntil")}
@@ -172,6 +200,8 @@ class Memory(Service):
             self.domain.event(ctx, mid, new["rev"], kind="memory"),
         ]
         writes.extend(source_checks)
+        if not delete:
+            writes.append(fence)
         if delete and old["key"] and old["kind"] != "exchange":
             slot = self.store.get(
                 "Domain", (hkey(ctx.h), f"MEMKEY#{ctx.actor}#{old['kind']}#{old['key']}")
@@ -189,13 +219,16 @@ class Memory(Service):
         rows, last = self.store.query(
             "Domain", hkey(ctx.h), prefix="MEMTIME#", after=after, limit=50
         )
-        items = []
+        items, checks = [], []
         for item in rows:
             try:
-                items.append(projection(self.get(ctx, item["id"])))
+                current = self.get(ctx, item["id"])
+                checks.extend(self.read_checks(ctx, current))
+                items.append(projection(current))
             except Problem as exc:
                 if exc.status != 404:
                     raise
+        self.store.transact(ctx.guards() + checks)
         return {
             "items": items,
             "nextCursor": self.domain.cursors.encode(ctx.actor, ctx.h, "memory", last)
@@ -282,7 +315,7 @@ class Memory(Service):
                 ):
                     candidates.append(candidate)
         unique = {item["id"]: item for item in candidates}
-        selected, missing_sources, used = [], [], 0
+        selected, missing_sources, used, checks = [], [], 0, []
         for item in sorted(unique.values(), key=lambda x: (x["occurredAt"], x["id"]), reverse=True):
             linked = None
             try:
@@ -305,9 +338,14 @@ class Memory(Service):
             if used + size > body["maxCharacters"]:
                 continue
             selected.append(value)
+            checks.extend(self.read_checks(ctx, item))
+            if linked:
+                _, authority = self.source_authority(ctx, item["source"])
+                checks.extend([guard("Domain", linked), *authority])
             used += size
             if len(selected) >= body["limit"]:
                 break
+        self.store.transact(ctx.guards() + checks)
         return {
             "items": selected,
             "missingSources": missing_sources[:8],

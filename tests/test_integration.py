@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from conftest import Clock, Harness
 
-from koyori.backup import export_local, restore_local
+from koyori.backup import erasure_ledger, export_local, restore_local
 from koyori.config import Settings
 from koyori.contracts import MemberCreate
 from koyori.demo import initialize_keys
@@ -234,8 +234,10 @@ def test_offline_restore_retrieves_rights_and_pending_work(dynamo, tmp_path):
     exported = export_local(h.domain.store, path)
     target = DynamoStore(replace(h.settings, prefix=f"KoyoriRestore{uuid4().hex}"))
     try:
-        restored = restore_local(target, path)
-        assert restored == exported
+        restored = restore_local(target, path, erasure_overlay=erasure_ledger(h.domain.store))
+        assert restored["sha256"] == exported["sha256"]
+        assert restored["counts"]["Domain"] == exported["counts"]["Domain"]
+        assert target.get("Sessions", ("RESTORE_FENCE", "META"))["blocked"]
         domain = Domain(target, h.settings, Cursors(h.settings.cursor_secret(), h.clock), h.clock)
         assert domain.context("sam", h.h).member["active"]
         assert domain.task_access(domain.context("alex", h.h), tid)[0]["checkpoint"] == 1
@@ -246,5 +248,5 @@ def test_offline_restore_retrieves_rights_and_pending_work(dynamo, tmp_path):
         Engine(domain).repair()
         assert domain.task_access(domain.context("alex", h.h), tid)[0]["status"] == "SUCCEEDED"
     finally:
-        for table in ("Domain", "Delivery", "Sessions"):
+        for table in ("Domain", "Delivery", "Sessions", "Connections"):
             target.client.delete_table(TableName=target.name(table))

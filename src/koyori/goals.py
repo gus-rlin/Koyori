@@ -69,7 +69,7 @@ def validate_goal_sources(domain, ctx, task):
             item = Memory(domain).get(ctx, reference["id"])
             if item["rev"] != reference["revision"]:
                 raise Problem(409, "PLAN_CONTEXT_CHANGED", "Canonical plan source changed.")
-            checks.append(guard("Domain", item))
+            checks.extend(Memory(domain).read_checks(ctx, item))
         else:
             prefix = "CALVERSION" if reference["kind"] == "calendar" else "CONNECTION"
             item = domain.store.get("Domain", (task["PK"], f"{prefix}#{reference['id']}"))
@@ -640,7 +640,7 @@ class Goals(Service):
                     current = Memory(self.domain).get(ctx, item["id"])
                     if current["rev"] != item["rev"]:
                         raise Problem(409, "PLAN_CONTEXT_CHANGED", "Planning context changed.")
-                    checks.append(guard("Domain", current))
+                    checks.extend(Memory(self.domain).read_checks(ctx, current))
                 if accepted["disposition"] == "ready":
                     planned_intents = {
                         s["arguments"]["intentKey"]

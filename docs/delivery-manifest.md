@@ -1,4 +1,4 @@
-# Manifeste de livraison — étapes 1, 2 et 3
+# Manifeste de livraison — étapes 1 à 4
 
 Contrat actualisé le 2026-10-06. La livraison comprend les implémentations locales et les artefacts AWS vérifiables sans compte. Les preuves d'exécution AWS et de qualité du modèle réel demeurent séparées.
 
@@ -23,7 +23,11 @@ Contrat actualisé le 2026-10-06. La livraison comprend les implémentations loc
 | Reprise et changement d'objectif | 3 | Réel en local, intentions et checkpoints persistants | Baux/générations, attentes sans modèle actif, ancienne action rapprochée avant remplacement, même intention commerciale |
 | Routines et notifications | 3 | Réel en local ; Scheduler/Step Functions Standard codés et synthétisés | UTC/IANA/DST, occurrence/règle versionnées, réparation de réveils, groupes privés et horaires de calme |
 | Apprentissage sourcé | 3 | Réel par API, propositions explicitement acceptées | Révisions source/cible, correction et effacement des projections, procédures déclaratives, aucune expansion des droits |
-| Voix, MCP et Alexa+ | 4 | Différé ; aucune intégration native | Canaux sur le même domaine, qualification distincte du canal représentant Alexa |
+| MCP versionné | 4 | SDK Streamable HTTP réel, OAuth lié à la ressource, runtime préparé | Métadonnées client sans autorité ; huit outils du domaine ; droits et idempotence réutilisés |
+| Transport vocal | 4 | WebSocket réel local ; transcripts de recette simulés ; adaptateur Nova/Polly préparé | Ticket unique, modes, PCM borné, renouvellement, tours persistants, annonces selon reçu |
+| Signaux et rattrapage | 4 | Feed et outbox réels ; AppSync/IAM/Lambda préparés | Signal sans contenu privé, abonnement exact, rattrapage avec droits actuels |
+| Confidentialité et récupération | 4 | Export/effacement paginés et restauration locale avec ledger | Suppressions plus récentes appliquées, anciennes sessions retirées, cible hors ligne ; historique commercial conservé |
+| Livraison complète | 4 | Manifestes et CDK ; AWS/ARM64 distants non qualifiés | Digests immuables, contrats de rollback, preuves locales cumulatives ; aucune intégration native Alexa+ |
 
 ## Choix de mise en œuvre
 

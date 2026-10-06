@@ -1,15 +1,15 @@
 {
   "schemaVersion": "1.0",
-  "dateEuropeParis": "2026-10-06T01:57:58.771986+02:00",
-  "scope": "stages-one-two-three-local-and-aws-preparation",
-  "sourceSha256": "5f340a8147daca1567cf8761ba64857cedfc1b1dae9c0cab5542524854b176ee",
+  "dateEuropeParis": "2026-10-06T04:07:03.088783+02:00",
+  "scope": "stages-one-two-three-four-local-and-aws-preparation",
+  "sourceSha256": "c375d1926a8504f4c86577a1275ad69413acead8bc46e2426736aab6c7b7a017",
   "sourceHashFormat": "sha256(path + NUL + LF-text); case-sensitive POSIX path order",
-  "lockSha256": "4f4eb0427cfc810e5afaddd26838494eb5aa917eecf39d47ed07fb712580a869",
-  "lambdaBundleSha256": "b535ca8af96a02681c12991526bff0e0cc56b0f7c4b98d45214cb6733f3af2ae",
-  "templateSha256": "0d1748b60b9493687e856e90ce9490aee3801c64a65a08db4fd22ada1f047e05",
-  "runtimeImageId": "sha256:770e68fe9889a6a1fa873ae3fd9107ec8f12a90a7e230ab23cc67197168e7924",
+  "lockSha256": "c52a14c6bbdc77a314aa2faf2b6304a3b075007f6f7727e88c2524a8109b1526",
+  "lambdaBundleSha256": "ce2113eeaa3f087f68eb01934c93b7e0941f51d4832ea73956e53a71d880f67f",
+  "templateSha256": "aab4cce39f98362cbca382dae08e4df818ad79ce8668a721aa5b030656358c4d",
+  "runtimeImageId": "sha256:039e26853d86954fe604a89cacc3c3a93b972beb7016d139442cb55a2eff5933",
   "pytest": {
-    "tests": 241,
+    "tests": 297,
     "failures": 0,
     "errors": 0,
     "skipped": 0
@@ -45,10 +45,41 @@
     "oneRoutineOccurrenceAfterRepeatedWake": true,
     "groupedNotificationFeed": true
   },
+  "stage4Recovery": {
+    "officialMcpInitialize": true,
+    "voiceMcpAndRestSameTask": true,
+    "restartAndReconnectPreserveConversation": true,
+    "disconnectDoesNotCancelTask": true,
+    "taskContinuesAfterVoiceCloses": true,
+    "canonicalRecallFR": true,
+    "canonicalRecallEN": true,
+    "durableCatchupAfterMissingSignals": true,
+    "boundedFourClientReadBurst": true
+  },
+  "channelLatency": {
+    "samples": 17,
+    "p50": 58.64,
+    "p95": 197.11,
+    "scope": "mixed MCP roundtrip and synthetic session readiness; localhost; not speech latency"
+  },
+  "realSpeechQualified": false,
+  "appSyncQualified": false,
   "liveNovaQualified": false,
   "googleQualified": false,
   "bedrockAndVectorsQualified": false,
   "runtimeDependencyAudit": "no known vulnerabilities found",
   "awsDeployedOrQualified": false,
-  "githubWorkflowExecuted": false
+  "githubWorkflowExecuted": false,
+  "followupVerification": {
+    "journal": "JRN-024",
+    "dateEuropeParis": "2026-10-06",
+    "previousEvidenceSourceSha256": "6fc13bd4747d25cf439ddb1d6e4e31dc7f676fec992c9507877c71ae88fe0925",
+    "scope": "AgentCore HTTP/MCP fixes; prior cumulative tests, bundles and images describe the previous source; rebuild pending CI",
+    "pytest": {
+      "tests": 34,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  }
 }

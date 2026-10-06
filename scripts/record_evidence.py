@@ -35,6 +35,7 @@ def source_paths():
         ROOT / p
         for p in (
             "Dockerfile",
+            "Dockerfile.runtime",
             "compose.yaml",
             "pyproject.toml",
             "uv.lock",
@@ -69,6 +70,9 @@ def main():
     stage3_recovery = json.loads((ROOT / "artifacts/stage3-recovery.json").read_text())
     if stage3_recovery["result"] != "PASS":
         raise ValueError("Stage-three Docker recovery not verified")
+    stage4_recovery = json.loads((ROOT / "artifacts/stage4-recovery.json").read_text())
+    if stage4_recovery["result"] != "PASS":
+        raise ValueError("Stage-four Docker recovery not verified")
     for source in (ROOT / "src/koyori").rglob("*.py"):
         bundled = ROOT / "artifacts/lambda/koyori" / source.relative_to(ROOT / "src/koyori")
         if bundled.read_bytes() != source.read_bytes():
@@ -97,7 +101,7 @@ def main():
     report = {
         "schemaVersion": "1.0",
         "dateEuropeParis": datetime.now(ZoneInfo("Europe/Paris")).isoformat(),
-        "scope": "stages-one-two-three-local-and-aws-preparation",
+        "scope": "stages-one-two-three-four-local-and-aws-preparation",
         "sourceSha256": tree_hash(source_paths(), normalize_text=True),
         "sourceHashFormat": "sha256(path + NUL + LF-text); case-sensitive POSIX path order",
         "lockSha256": hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest(),
@@ -110,6 +114,10 @@ def main():
         "dockerRecovery": recovery["checks"],
         "stage2Recovery": stage2_recovery["checks"],
         "stage3Recovery": stage3_recovery["checks"],
+        "stage4Recovery": stage4_recovery["checks"],
+        "channelLatency": stage4_recovery["observedLatencyMs"],
+        "realSpeechQualified": False,
+        "appSyncQualified": False,
         "liveNovaQualified": False,
         "googleQualified": False,
         "bedrockAndVectorsQualified": False,

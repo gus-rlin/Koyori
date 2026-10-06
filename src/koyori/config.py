@@ -53,8 +53,36 @@ class Settings:
     scheduler_role_arn: str | None = None
     scheduler_target_arn: str | None = None
     calendar_reader_arn: str | None = None
+    speech_mode: str = "disabled"
+    speech_region: str = "us-east-1"
+    speech_model: str = "amazon.nova-2-sonic-v1:0"
+    voice_runtime_arn: str | None = None
+    mcp_runtime_arn: str | None = None
+    voice_url: str = "ws://127.0.0.1:8099/ws"
+    mcp_resource: str = "http://127.0.0.1:8088/mcp"
+    allowed_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
+    voice_daily_seconds: int = 3600
+    realtime_url: str | None = None
+    realtime_api_id: str | None = None
 
     def __post_init__(self):
+        if self.speech_mode not in {"disabled", "simulated", "aws"}:
+            raise ValueError("Invalid speech mode")
+        if self.env != "local" and self.speech_mode == "simulated":
+            raise ValueError("Synthetic speech is local only")
+        if self.speech_model != "amazon.nova-2-sonic-v1:0" or self.speech_region not in {
+            "us-east-1",
+            "us-west-2",
+            "eu-north-1",
+        }:
+            raise ValueError("Unsupported speech locality/model")
+        if not 600 <= self.voice_daily_seconds <= 86400:
+            raise ValueError("Invalid voice daily ceiling")
+        if self.env != "local" and (
+            urlparse(self.mcp_resource).scheme != "https"
+            or any(urlparse(origin).scheme != "https" for origin in self.allowed_origins)
+        ):
+            raise ValueError("Deployed channel endpoints require HTTPS")
         if self.env not in {"local", "dev", "prod"}:
             raise ValueError("Unsupported KOYORI_ENV")
         if not 1 <= self.shards <= 16 or not 5 <= self.lease_seconds <= 300:
@@ -141,6 +169,21 @@ class Settings:
             scheduler_role_arn=os.getenv("KOYORI_SCHEDULER_ROLE_ARN"),
             scheduler_target_arn=os.getenv("KOYORI_SCHEDULER_TARGET_ARN"),
             calendar_reader_arn=os.getenv("KOYORI_CALENDAR_READER_ARN"),
+            speech_mode=os.getenv("KOYORI_SPEECH_MODE", "simulated" if local else "disabled"),
+            speech_region=os.getenv("KOYORI_SPEECH_REGION", "us-east-1"),
+            speech_model=os.getenv("KOYORI_SPEECH_MODEL", "amazon.nova-2-sonic-v1:0"),
+            voice_runtime_arn=os.getenv("KOYORI_VOICE_RUNTIME_ARN"),
+            mcp_runtime_arn=os.getenv("KOYORI_MCP_RUNTIME_ARN"),
+            voice_url=os.getenv("KOYORI_VOICE_URL", "ws://127.0.0.1:8099/ws"),
+            mcp_resource=os.getenv("KOYORI_MCP_RESOURCE", "http://127.0.0.1:8088/mcp"),
+            allowed_origins=tuple(
+                filter(
+                    None, os.getenv("KOYORI_ALLOWED_ORIGINS", "http://127.0.0.1:5173").split(",")
+                )
+            ),
+            voice_daily_seconds=int(os.getenv("KOYORI_VOICE_DAILY_SECONDS", "3600")),
+            realtime_url=os.getenv("KOYORI_REALTIME_URL"),
+            realtime_api_id=os.getenv("KOYORI_REALTIME_API_ID"),
         )
 
     def client(self, service: str):

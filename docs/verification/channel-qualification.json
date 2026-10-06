@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "result": "NOT_RUN",
+  "reason": "aws_credentials_unavailable",
+  "testsExecuted": 0,
+  "facturableModelCalls": 0,
+  "observedAwsCost": null,
+  "awsResourcesCreated": [],
+  "requiredEvidence": [
+    "Cognito PKCE and resource-bound MCP",
+    "AgentCore ARM64 image and IAM denial",
+    "French and English Nova finalized PCM turns",
+    "Polly exact templates and interruption",
+    "AppSync subscription isolation and reconnect",
+    "three concept journeys with Google calendar",
+    "offline restore and key rotation",
+    "client voice p95 and measured billing units"
+  ],
+  "environment": {
+    "region": "eu-west-1",
+    "speechRegion": "eu-north-1"
+  }
+}
