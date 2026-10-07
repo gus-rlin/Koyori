@@ -1069,7 +1069,7 @@ Cinquième lecture, limitée à ce complément de scripts : **9/10 maintenu**, a
 ## JRN-034 — 2026-10-06 — Suppression demandée du clone supplémentaire
 
 - **Objectif et état** : bloqué ; l’utilisateur demande explicitement de supprimer `Koyori-propre`.
-- **Réalisations** : cible absolue résolue et contrôlée : `C:/Users/Gus/Documents/ChatGPT/Koyori-propre`, distincte du dépôt original. Clone propre sur `main` à `f7936fc`, sans changement local ni fichier non suivi ; cible sans attribut de lien de réanalyse. Aucun fichier supprimé.
+- **Réalisations** : cible résolue et contrôlée : le dossier frère `Koyori-propre` (chemin absolu non reproduit), distinct du dépôt original. Clone propre sur `main` à `f7936fc`, sans changement local ni fichier non suivi ; cible sans attribut de lien de réanalyse. Aucun fichier supprimé.
 - **Choix et raisons** : suppression limitée au clone demandé avec `Remove-Item -LiteralPath ... -Recurse -Force`, après contrôle du chemin et du statut. Cette demande remplace la conservation proposée dans JRN-033.
 - **Difficultés et résolution** : commande rejetée avant exécution avec `blocked by policy`, sans motif détaillé. Aucun contournement tenté ; le clone reste présent.
 - **Ce qui a bien fonctionné** : contrôle préalable identifiant le clone et confirmant la présence du dépôt initial ; aucun problème observé lors des lectures.
