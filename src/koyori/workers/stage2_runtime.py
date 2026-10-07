@@ -7,7 +7,10 @@ from koyori.semantic import Semantic
 
 def tick(domain, role):
     if role == "projection":
-        return Semantic(domain).sweep()
+        from koyori.lexical import Lexical
+
+        lexical = Lexical(domain).sweep()
+        return lexical + Semantic(domain).sweep()
     actions = Actions(domain).sweep()
     calendars = Calendar(domain).sweep()
     return actions + calendars

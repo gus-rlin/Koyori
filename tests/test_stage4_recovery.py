@@ -1,11 +1,8 @@
 """Suppression overlay and admission fencing survive restoration and compatibility checks."""
 
-import hashlib
-import json
-
 import pytest
 
-from koyori.backup import apply_suppressions, erasure_ledger
+from koyori.backup import apply_suppressions, erasure_ledger, ledger_hash
 from koyori.domain import row
 from koyori.release import CONTRACTS, RECOVERY, compatible
 from koyori.store import put
@@ -35,12 +32,11 @@ def test_post_snapshot_erasure_invalidates_credentials_approvals_sessions():
     mid = "a" * 32
     entries = [{"PK": "H#house", "SK": f"MEMORY#{mid}", "revision": 3}]
     ledger = {
-        "schemaVersion": "1.0",
+        "schemaVersion": "2.0",
         "entries": entries,
-        "sha256": hashlib.sha256(
-            json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest(),
+        "privacyFences": [],
     }
+    ledger["sha256"] = ledger_hash(ledger)
     tables = {
         "Domain": [
             {

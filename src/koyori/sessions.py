@@ -9,7 +9,7 @@ from koyori.errors import Conflict, Problem, denied, missing
 from koyori.security import digest
 from koyori.store import Change, guard, put, revised
 
-READ_TOOLS = {"get_daily_context", "recall_memories", "get_task_status"}
+READ_TOOLS = {"get_daily_context", "recall_memories", "search_memories", "get_task_status"}
 PERSONAL_TOOLS = READ_TOOLS | {
     "submit_goal",
     "amend_goal",

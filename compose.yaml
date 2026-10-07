@@ -20,6 +20,7 @@ x-runtime: &runtime
     KOYORI_TOKEN_KEY_FILE: /state/provider/envelope.key
     KOYORI_SEMANTIC_MODE: simulated
     KOYORI_PLANNING_MODE: simulated
+    KOYORI_LEARNING_MODE: simulated
     KOYORI_SPEECH_MODE: simulated
     KOYORI_VOICE_URL: ws://127.0.0.1:${KOYORI_VOICE_PORT:-8099}/ws
     KOYORI_MCP_RESOURCE: http://127.0.0.1:${KOYORI_API_PORT:-8088}/mcp
@@ -102,6 +103,9 @@ services:
   notifications:
     <<: *runtime
     command: ["python", "-m", "koyori.workers.cli", "notifications"]
+  learning:
+    <<: *runtime
+    command: ["python", "-m", "koyori.workers.cli", "learning"]
   demo:
     <<: *runtime
     profiles: ["tools"]

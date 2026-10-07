@@ -86,10 +86,10 @@ def narration(value, locale="fr-FR"):
             if french
             else "The goal is stopped. Commercial cancellation still requires a provider receipt."
         )
-    elif value.get("items") or value.get("calendars"):
+    elif value.get("items") or value.get("coreItems") or value.get("calendars"):
         texts = [
             item["text"][:800]
-            for item in value.get("items", [])[:2]
+            for item in [*value.get("items", []), *value.get("coreItems", [])][:2]
             if item.get("text") and item.get("sourceStatus") == "available"
         ]
         text = (

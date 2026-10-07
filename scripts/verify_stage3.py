@@ -10,7 +10,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
-from verify_local import BASE, ROOT, compose, wait_ready, worker_environment
+from verify_local import BASE, ROOT, compose, demo_household, wait_ready, worker_environment
 from verify_stage2 import proof
 
 from koyori.stage2_contracts import BudgetPut
@@ -26,7 +26,7 @@ def main():
         "run", "--rm", "--no-deps", "demo", "python", "-m", "koyori.demo", "token", "sam"
     ).strip()
     client = httpx.Client(base_url=BASE, timeout=15, headers={"Authorization": f"Bearer {access}"})
-    household = client.get("/v1/households").json()["items"][0]
+    household = demo_household(client)
     h = household["id"]
     client.headers["X-Household-Id"] = h
     stopped = [

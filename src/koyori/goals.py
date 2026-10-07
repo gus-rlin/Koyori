@@ -429,6 +429,10 @@ class Goals(Service):
         task = self.current(run)
         new = revised(task, **values, updatedAt=self.domain.now())
         changes = list(writes)
+        if new["status"] == "SUCCEEDED" and task["status"] != "SUCCEEDED":
+            from koyori.auto_learning import AutoLearning
+
+            changes.extend(AutoLearning(self.domain).enqueue(ctx, new, "task"))
         if release:
             new.update(leaseOwner=None, leaseUntil=0)
             old = self.store.get("Delivery", (f"GOALRUN#{task['id']}", "META"))
@@ -461,15 +465,56 @@ class Goals(Service):
     def context_payload(self, ctx, task):
         memory = Memory(self.domain)
         body = ContextQuery(limit=8, maxCharacters=8000).model_dump()
-        page = memory.context(ctx, body)
-        items, truncated = page["items"], page["truncated"]
+        from koyori.lexical import words
+        from koyori.semantic import Semantic
+
+        terms = sorted(words(task["goal"]), key=lambda t: (-len(t), t))[:8]
+        body["query"] = " ".join(terms) if terms else None
+        core, core_checks, used, core_truncated = memory.core(ctx, body, task["memoryKeys"])
+        self.store.transact(ctx.guards() + memory.disclosure_fence() + core_checks)
+        semantic = Semantic(self.domain)
+        page = memory.context(
+            ctx,
+            {**body, "maxCharacters": max(256, 8000 - used)},
+            semantic=semantic if semantic.mode != "disabled" else None,
+        )
+        items, truncated = core + page["items"], core_truncated or page["truncated"]
+        # Keep explicit historical exchange keys compatible with the original contract.
         for key in task["memoryKeys"]:
-            page = memory.context(ctx, {**body, "key": key})
-            items += page["items"]
-            truncated |= page["truncated"]
-        items = list({item["id"]: item for item in items}.values())
-        truncated |= len(items) > 14
-        items = items[:14]
+            keyed = memory.context(ctx, {**body, "key": key, "query": None})
+            items.extend(keyed["items"])
+            truncated |= keyed["truncated"]
+        recent = memory.context(ctx, {**body, "query": None})
+        items.extend(recent["items"])
+        truncated |= recent["truncated"]
+        ranked = sorted(
+            {item["id"]: item for item in items}.values(),
+            key=lambda m: (
+                m.get("key") in task["memoryKeys"],
+                len(set(terms) & words(m["text"])),
+                m["owner"] == ctx.actor and m["kind"] == "preference",
+                m["visibility"] == "household",
+                m["occurredAt"],
+                m["id"],
+            ),
+            reverse=True,
+        )
+        items, used, durable = [], 0, 0
+        for entry in ranked:
+            size = len(json.dumps(entry, ensure_ascii=False))
+            is_core = entry["kind"] in {"preference", "procedure"}
+            if (
+                len(items) == 14
+                or used + size > 8000
+                or is_core
+                and durable == 8
+                or entry["sourceStatus"] != "available"
+            ):
+                truncated = True
+                continue
+            items.append(entry)
+            used += size
+            durable += int(is_core)
         accounts, after, scanned = [], None, 0
         # Historical tombstones and other owners must not masquerade as an absent account.
         while scanned < 500:
@@ -526,7 +571,14 @@ class Goals(Service):
             contextTruncated=truncated,
             connectionsTruncated=connections_truncated,
         )
-        while len(json.dumps(payload, ensure_ascii=False).encode()) > 20000:
+        while True:
+            payload["missingMemoryKeys"] = [
+                key
+                for key in task["memoryKeys"]
+                if key not in {m.get("key") for m in payload["memories"]}
+            ]
+            if len(json.dumps(payload, ensure_ascii=False).encode()) <= 20000:
+                return payload
             if payload["calendarData"]:
                 payload["calendarData"].pop()
             elif payload["memories"]:
@@ -534,7 +586,6 @@ class Goals(Service):
             else:
                 raise Problem(422, "PLANNING_CONTEXT_LIMIT", "Context exceeds the planning bound.")
             payload["contextTruncated"] = True
-        return payload
 
     def intent_terms(self, ctx, intent):
         if not intent["actions"]:
@@ -624,6 +675,13 @@ class Goals(Service):
         planning = self.planning or planner(self.domain.settings)
         payload = self.context_payload(ctx, task)
         quota = CallQuota(self.domain, ctx.h, task["id"], task["runEpoch"])
+        quota.input_checks = Memory(self.domain).disclosure_fence()
+        for entry in payload["memories"]:
+            canonical = Memory(self.domain).get(ctx, entry["id"])
+            if canonical["rev"] != entry["rev"]:
+                raise Problem(409, "PLAN_CONTEXT_CHANGED", "Planning context changed.")
+            _, authority = Memory(self.domain).context_value(ctx, canonical)
+            quota.input_checks.extend(authority)
         error = None
         for _ in range(2):
             try:
@@ -635,6 +693,7 @@ class Goals(Service):
                     allowed_connections={c["id"] for c in payload["connections"]},
                     allowed_memories={m["id"] for m in payload["memories"]},
                 )
+                checks.extend(quota.input_checks)
                 # Every context item used by a model remains current at promotion, even if omitted from its references.
                 for item in payload["memories"]:
                     current = Memory(self.domain).get(ctx, item["id"])

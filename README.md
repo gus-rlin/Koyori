@@ -4,6 +4,8 @@ Le socle exécute une commande synthétique durable, avec identité signée, aut
 
 **Périmètre codé : parties 1 à 4, local Docker et préparation AWS.** MCP et WebSocket vocal utilisent les objectifs, la mémoire, les droits et les reçus du même domaine. L'étape 4 ajoute tickets uniques, annonces sourcées, activité avec rattrapage, export/effacement des souvenirs, restauration en quarantaine et manifeste compatible. Planificateur, commerce et transcriptions des recettes restent simulés. Nova/Polly, AgentCore, AppSync, Google Calendar et Titan/S3 Vectors sont codés avec tests de contrat et infrastructure ; leurs accès réels restent à qualifier. Identité locale synthétique, DynamoDB Local et ElasticMQ émulés. Aucun achat réel ni appel distant à un modèle effectué ; aucune intégration native Alexa+.
 
+La [mémoire inspirée de Hermes](docs/memory-hermes.md) ajoute contexte durable, recherche lexicale des archives et propositions automatiques avec acceptation explicite. Un worker séparé applique les plafonds SDK ; l'apprentissage reste simulé dans Compose et désactivé par défaut sur AWS. L'environnement isolé `local/memory.env` évite les collisions avec les recettes précédentes.
+
 ## Démarrer
 
 ### Interface compagnon
@@ -49,6 +51,7 @@ uv run python scripts/verify_local.py
 uv run python scripts/verify_stage2.py
 uv run python scripts/verify_stage3.py
 uv run python scripts/verify_stage4.py
+uv run python scripts/verify_memory.py
 ```
 
 La recette Docker tue un worker vivant après le premier checkpoint, redémarre stockage et API, rejoue la commande et vérifie la fin de la même tâche. Elle arrête temporairement les services de ce projet, puis les redémarre. Sans `KOYORI_INTEGRATION=1`, les tests des émulateurs sont explicitement ignorés. Les assertions AWS exigent d'abord la construction et la synthèse ci-dessous.
@@ -62,7 +65,7 @@ uv run pytest -q tests/test_infrastructure.py
 uv run pip-audit --path artifacts/lambda --format cyclonedx-json --output artifacts/runtime-sbom.json
 ```
 
-Le bundle contient les roues Linux verrouillées. CDK prépare Cognito, quatre tables DynamoDB, EventBridge, SQS/DLQ, treize Lambda, Standard/Scheduler, KMS, S3 Vectors, API Gateway, deux runtimes AgentCore, AppSync Events, alarmes, PITR et sauvegardes. Aucun déploiement exécuté. Les deux images runtime ARM64 exigent un digest ECR immuable ; construire `Dockerfile.runtime` et qualifier cette architecture avant livraison distante. Callback Cognito, secrets Google et accès modèles doivent être configurés. Planification Nova US : décision de région/consentement requise ; voix Nova configurée en `eu-north-1`. Aucun coût AWS observé ni ressource distante créée. [Livraison et qualification](docs/stage4.md).
+Le bundle contient les roues Linux verrouillées. CDK prépare Cognito, quatre tables DynamoDB, EventBridge, SQS/DLQ, quatorze Lambda, Standard/Scheduler, KMS, S3 Vectors, API Gateway, deux runtimes AgentCore, AppSync Events, alarmes, PITR et sauvegardes. Aucun déploiement exécuté. Les deux images runtime ARM64 exigent un digest ECR immuable ; construire `Dockerfile.runtime` et qualifier cette architecture avant livraison distante. Callback Cognito, secrets Google et accès modèles doivent être configurés. Planification/apprentissage Nova US : décision de région/consentement requise ; voix Nova configurée en `eu-north-1`. Aucun coût AWS observé ni ressource distante créée. [Livraison et qualification](docs/stage4.md).
 
 La qualification Nova utilise `uv run python scripts/qualify_planner.py --live` sur des fixtures synthétiques uniquement, jusqu'à seize requêtes facturables. Sans accès AWS, le rapport indique `NOT_RUN`. Les [contrats de coordination](docs/stage3.md) détaillent limites, résultats et reprise.
 
@@ -81,6 +84,7 @@ Pour une stack indépendante, définir `COMPOSE_PROJECT_NAME`, `KOYORI_RUNTIME_I
 - [Vérifications de l'étape 3](docs/verification/stage3.md)
 - [Canaux, confidentialité et livraison — étape 4](docs/stage4.md)
 - [Vérifications de l'étape 4](docs/verification/stage4.md)
+- [Mémoire durable et apprentissage automatique](docs/memory-hermes.md)
 - [Journal du développement](JOURNAL.md)
 
 La licence du dépôt est [Apache 2.0](LICENSE). Le travail local ne constitue pas une publication, une contribution complémentaire Open Source ou une qualification de l'intégration Alexa+.

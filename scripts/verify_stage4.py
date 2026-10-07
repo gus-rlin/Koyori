@@ -9,7 +9,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
-from verify_local import BASE, ROOT, compose, wait_ready
+from verify_local import BASE, ROOT, compose, demo_household, wait_ready
 from websockets.asyncio.client import connect
 
 
@@ -22,7 +22,7 @@ def main():
         "run", "--rm", "--no-deps", "demo", "python", "-m", "koyori.demo", "token", "alex", "--mcp"
     ).strip()
     client = httpx.Client(base_url=BASE, timeout=10, headers={"Authorization": f"Bearer {access}"})
-    h = client.get("/v1/households").json()["items"][0]["id"]
+    h = demo_household(client)["id"]
     client.headers["X-Household-Id"] = h
     measurements = []
     checks = {}

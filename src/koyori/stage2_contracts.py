@@ -60,6 +60,7 @@ class MemoryPatch(Write):
 
 
 class ContextQuery(Write):
+    includeCore: bool = False
     day: Annotated[str, Field(max_length=10)] | None = None
     key: Identifier | None = None
     query: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
@@ -75,6 +76,23 @@ class ContextQuery(Write):
             parsed = date.fromisoformat(value)
             if not date.min < parsed < date.max:
                 raise ValueError("Context day must have representable timezone boundaries")
+        return value
+
+
+class MemorySearch(ContextQuery):
+    includeCore: Literal[False] = False
+    query: Annotated[str, Field(min_length=1, max_length=1000)]
+    kinds: list[Literal["exchange", "preference", "procedure"]] = Field(
+        default_factory=list, max_length=3
+    )
+    cursor: Annotated[str, Field(max_length=2048)] | None = None
+
+    @field_validator("query")
+    @classmethod
+    def significant_query(cls, value):
+        from koyori.lexical import query_terms
+
+        query_terms(value)
         return value
 
 

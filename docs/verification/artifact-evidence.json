@@ -1,15 +1,15 @@
 {
   "schemaVersion": "1.0",
-  "dateEuropeParis": "2026-10-06T04:07:03.088783+02:00",
+  "dateEuropeParis": "2026-10-06T05:55:53.698499+02:00",
   "scope": "stages-one-two-three-four-local-and-aws-preparation",
-  "sourceSha256": "c375d1926a8504f4c86577a1275ad69413acead8bc46e2426736aab6c7b7a017",
+  "sourceSha256": "fc884542fc2cf4c1577c542bc69da9f150e33e80a829ff5db05e34cee197febe",
   "sourceHashFormat": "sha256(path + NUL + LF-text); case-sensitive POSIX path order",
-  "lockSha256": "c52a14c6bbdc77a314aa2faf2b6304a3b075007f6f7727e88c2524a8109b1526",
-  "lambdaBundleSha256": "ce2113eeaa3f087f68eb01934c93b7e0941f51d4832ea73956e53a71d880f67f",
-  "templateSha256": "aab4cce39f98362cbca382dae08e4df818ad79ce8668a721aa5b030656358c4d",
-  "runtimeImageId": "sha256:039e26853d86954fe604a89cacc3c3a93b972beb7016d139442cb55a2eff5933",
+  "lockSha256": "c718ba705264ef754a8744b20d010b68082205634742a9323e916ae7f2d922d5",
+  "lambdaBundleSha256": "b6b1c610886b4d351daadf98a0bde0a9cfa0f1892e47bc93db56eeb3309a899e",
+  "templateSha256": "256eddfab86f6c5333ccc75fcea1ff4132a1877b6a2c199d397fa5056532a539",
+  "runtimeImageId": "sha256:e392536a38ac1c10fe04cfff7fe718a6d455aadd8cf10cf732c2bd3a7234c07c",
   "pytest": {
-    "tests": 297,
+    "tests": 344,
     "failures": 0,
     "errors": 0,
     "skipped": 0
@@ -56,10 +56,19 @@
     "durableCatchupAfterMissingSignals": true,
     "boundedFourClientReadBurst": true
   },
+  "memoryHermes": {
+    "coreSeparateFromCivilDay": true,
+    "simulatedLearningRequiresAcceptance": true,
+    "oldAccentInsensitiveArchive": true,
+    "commonMcpSearchTool": true,
+    "canonicalErasureHidesPendingIndex": true,
+    "completeErasureIncludesProposals": true
+  },
+  "liveLearningQualified": false,
   "channelLatency": {
     "samples": 17,
-    "p50": 58.64,
-    "p95": 197.11,
+    "p50": 48.37,
+    "p95": 155.41,
     "scope": "mixed MCP roundtrip and synthetic session readiness; localhost; not speech latency"
   },
   "realSpeechQualified": false,
@@ -70,16 +79,18 @@
   "runtimeDependencyAudit": "no known vulnerabilities found",
   "awsDeployedOrQualified": false,
   "githubWorkflowExecuted": false,
-  "followupVerification": {
-    "journal": "JRN-024",
+  "reviewFixVerification": {
     "dateEuropeParis": "2026-10-06",
-    "previousEvidenceSourceSha256": "6fc13bd4747d25cf439ddb1d6e4e31dc7f676fec992c9507877c71ae88fe0925",
-    "scope": "AgentCore HTTP/MCP fixes; prior cumulative tests, bundles and images describe the previous source; rebuild pending CI",
+    "scope": "PR 5: current-profile core discovery and French apostrophe durability gate",
     "pytest": {
-      "tests": 34,
+      "tests": 77,
       "failures": 0,
       "errors": 0,
       "skipped": 0
-    }
+    },
+    "report": "artifacts/pr5-review-fixes-tests.xml",
+    "historicalArtifactSourceSha256": "c41d70cc4bbbf41d1b27eb74d57d96cbfc6c297ddb65bc8541abe5caa442a6f4",
+    "artifactsRebuilt": false,
+    "cumulativeSuiteRepeated": false
   }
 }
