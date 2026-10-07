@@ -51,7 +51,7 @@ export function Empty({ title, text }: { title: string; text: string }) {
   return (
     <div className="empty">
       <LeafIcon size={32} weight="light" />
-      <h3>{title}</h3>
+      <h2>{title}</h2>
       <p>{text}</p>
     </div>
   );

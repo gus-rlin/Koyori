@@ -2,7 +2,7 @@
   "schemaVersion": "1.0",
   "dateEuropeParis": "2026-10-06T05:55:53.698499+02:00",
   "scope": "stages-one-two-three-four-local-and-aws-preparation",
-  "sourceSha256": "fc884542fc2cf4c1577c542bc69da9f150e33e80a829ff5db05e34cee197febe",
+  "sourceSha256": "097ac400428d0c3831ad9411d0451a6dd9ae54ded2af8b37243fa9f4770181cf",
   "sourceHashFormat": "sha256(path + NUL + LF-text); case-sensitive POSIX path order",
   "lockSha256": "c718ba705264ef754a8744b20d010b68082205634742a9323e916ae7f2d922d5",
   "lambdaBundleSha256": "b6b1c610886b4d351daadf98a0bde0a9cfa0f1892e47bc93db56eeb3309a899e",
@@ -92,5 +92,27 @@
     "historicalArtifactSourceSha256": "c41d70cc4bbbf41d1b27eb74d57d96cbfc6c297ddb65bc8541abe5caa442a6f4",
     "artifactsRebuilt": false,
     "cumulativeSuiteRepeated": false
+  },
+  "webIntegrationVerification": {
+    "dateEuropeParis": "2026-10-07",
+    "scope": "Companion frontend, local Compose voice origins and frontend CI; backend Python unchanged",
+    "historicalArtifactSourceSha256": "fc884542fc2cf4c1577c542bc69da9f150e33e80a829ff5db05e34cee197febe",
+    "historicalArtifactsNote": "Top-level backend suite, Lambda/CDK and recovery results remain historical. See docs/verification/web-backend.md for current targeted and browser results.",
+    "backendContractTests": {
+      "tests": 50,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "report": "docs/verification/web-backend.md",
+    "cumulativeSuiteRepeated": false,
+    "realSpeechQualified": false,
+    "browserTests": {
+      "tests": 38,
+      "failures": 0,
+      "skipped": 0,
+      "seconds": 58.4,
+      "includesLocalDocker": true
+    }
   }
 }

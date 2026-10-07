@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 async function go(page: Page, hash: string) {
-  await page.goto(`/#${hash}`);
+  await page.goto(`/?demo=1#${hash}`);
 }
 
 test("overview is honest, responsive, and free of browser errors", async ({

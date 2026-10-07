@@ -2,6 +2,8 @@
 
 Date : **2026-10-06**, Europe/Paris. Travail local sur `gus-rlin/koyori-interface`, issu de `f81df40`, dans le worktree isolé `koyori-interface/Koyori`. Voir JRN-026 (identifiant corrigé lors de la réunion JRN-027).
 
+Ce rapport décrit la démonstration historique, maintenant accessible avec `?demo=1`. Le raccordement du 2026-10-07 est qualifié séparément dans [web-backend.md](web-backend.md). Les anciennes mesures Lighthouse ne qualifient pas la version connectée.
+
 ## Résultats observés
 
 | Contrôle | Résultat | Portée |

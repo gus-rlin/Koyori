@@ -5,10 +5,12 @@ export function Dialog({
   title,
   onClose,
   children,
+  demo = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  demo?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   // Native modal supplies focus containment, Escape handling and background inertness.
@@ -24,7 +26,11 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      onCancel={onClose}
+      onCancel={(event) => {
+        // React owns closure; the caller may keep the modal open during a mutation.
+        event.preventDefault();
+        onClose();
+      }}
       aria-labelledby="dialog-title"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -32,7 +38,9 @@ export function Dialog({
     >
       <div className="dialog-content">
         <header className="dialog-header">
-          <span className="small-label">Koyori / démonstration</span>
+          <span className="small-label">
+            {demo ? "Koyori / démonstration" : "Koyori / espace personnel"}
+          </span>
           <button className="icon-button" onClick={onClose} aria-label="Fermer">
             <XIcon size={20} />
           </button>
