@@ -1,69 +1,91 @@
 # Interface compagnon Koyori
 
-Application React/TypeScript/Vite autonome, en français. **Démonstration interactive avec données fictives**, sans connexion à l’API Python, à Alexa, à Google ou à un commerçant. Les modifications vivent uniquement dans l’onglet et disparaissent au rechargement. Aucun microphone n’est demandé et aucun achat n’est envoyé.
+Application React/TypeScript/Vite en français, **connectée au backend par défaut**. Les demandes, souvenirs, routines, connexions et activités viennent de l’API. La démonstration autonome reste accessible uniquement avec `?demo=1` ; elle ne sert jamais de repli réseau.
 
 ## Démarrer
 
-Depuis ce répertoire, avec Node.js 22.12+ ou 24 :
+Depuis la racine, reconstruire le backend courant puis démarrer les services :
+
+```powershell
+docker compose build api
+docker compose up -d --no-build
+```
+
+Depuis `apps/web`, avec Node 24 :
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-Ouvrir [l’interface locale](http://127.0.0.1:5178). Le serveur écoute uniquement sur la boucle locale, avec port strict pour ne pas remplacer silencieusement une autre application.
+Ouvrir [l’interface locale](http://127.0.0.1:5178). Le proxy Vite transmet `/v1` à `http://127.0.0.1:8088`. Pour une autre API, définir `KOYORI_API_TARGET` avant de démarrer Vite (variable serveur, jamais jeton `VITE_*`). `vite preview` utilise le même proxy sur 4178. En hébergement de production, servir le bundle avec un reverse proxy `/v1` vers l’API, en HTTPS ; le serveur Vite de développement n’est pas le déploiement de production.
 
-Si Node refuse le certificat du registre sur ce poste Windows, utiliser les certificats système approuvés (Node 24), sans désactiver TLS :
+Les origines vocales locales autorisées dans Compose sont `http://127.0.0.1:5178`, `http://127.0.0.1:4178` et l’ancien port 5173. Définir `KOYORI_ALLOWED_ORIGINS` explicitement pour d’autres origines, puis recréer API/voix. Aucun wildcard ni désactivation du contrôle Origin.
+
+Sur ce poste, `NODE_USE_SYSTEM_CA=1` résout le certificat npm. Pour Docker, voir le secret BuildKit `trusted_ca` dans [l’exploitation](../../docs/operations.md). TLS reste vérifié.
+
+## Identité et opérations
+
+L’écran de connexion accepte un **jeton d’accès** signé par l’émetteur configuré et charge uniquement ses foyers autorisés. Il n’implémente pas encore la redirection interactive Cognito/PKCE. Jeton et données restent en mémoire ; pas de localStorage, sessionStorage, URL contenant un bearer ou connexion automatique au rechargement. Le serveur conserve les données métier. Pour les fixtures locales, générer le jeton puis le copier dans le champ, sans le committer :
 
 ```powershell
-$env:NODE_USE_SYSTEM_CA = '1'
-npm ci
+docker compose run --rm --no-deps demo python -m koyori.demo token alex
 ```
 
-## Parcours disponibles
+Les commandes portent `Idempotency-Key` et, pour les objets existants, `If-Match`. Après coupure réseau, réessayer la même opération conserve sa clé. Après conflit de révision, fermer le dialogue, actualiser et examiner la nouvelle version. Les confirmations sont affichées après réponse serveur. Les listes sont paginées, puis actualisées toutes les dix secondes lorsque l’onglet est visible ; ce n’est pas un abonnement AppSync. Une session expirée efface l’espace privé et demande une reconnexion.
 
-- Vue du jour, agenda fictif et historique des attentions.
-- Création, filtrage, pause, reprise et annulation d’une demande locale.
-- Panier avec détail du montant et accord explicitement simulé. Le refus met la demande en pause ; la reprise permet de revoir le panier. Un accord n’est jamais présenté comme une confirmation du commerçant.
-- Recherche, correction et suppression confirmée des préférences fictives.
-- Interrupteurs de routines, sans programmation d’un réveil réel.
-- Fiches de services indiquant les limites de connexion.
-- Thèmes clair/sombre, navigation mobile, dialogues natifs accessibles, prise en compte du mouvement réduit.
+Parcours : demandes (création, filtre, plan, pause/reprise/annulation), panier issu du devis serveur, souvenirs (recherche dans la liste chargée, correction et suppression confirmée), routines existantes (pause/reprise), services existants (lecture) et activité. Aucun agenda inventé. La création de routines et la connexion de nouveaux comptes ne sont pas proposées par ces écrans.
 
-La navigation utilise des fragments (`#today`, `#tasks`, `#memory`, `#routines`, `#services`, `#activity`, `#settings`) pour permettre liens directs et historique sans configuration de réécriture serveur.
+### Approbation d’un panier
+
+Le frontend affiche conditions, montant, livraison et expiration du devis. « Vérifier mon identité pour approuver » crée un challenge lié à `POST /v1/approvals` et au hash du corps normalisé. Fournir ensuite un **jeton ID frais lié au nonce affiché**, émis pour le même utilisateur. Le serveur vérifie cette preuve puis accorde une autorisation à usage unique. Le frontend crée l’approbation, puis transmet la décision à la révision exacte de l’objectif ; il conserve le résultat du premier appel si le second échoue.
+
+Pour un environnement local synthétique uniquement, remplacer `NONCE_AFFICHE` par le nonce du dialogue :
+
+```powershell
+docker compose run --rm --no-deps demo python -c "from koyori.config import Settings; from koyori.demo import token; print(token(Settings.from_env(), 'alex', nonce='NONCE_AFFICHE'))"
+```
+
+Aucune clé privée ne rejoint le frontend. Un compte réel doit obtenir sa preuve auprès de son émetteur ; aucun endpoint de fabrication de jeton n’est ajouté. Un panier simulé reste simulé après approbation et son reçu ne prouve pas un achat réel.
+
+## Voix et microphone
+
+« Démarrer la voix » admet une session personnelle via `/v1/sessions`, ouvre l’URL WebSocket retournée et envoie le ticket unique dans le premier message. Aucun bearer n’est mis dans l’URL ; les URL AgentCore présignées restent en mémoire. Les URL non chiffrées ne sont acceptées qu’en boucle locale.
+
+- **Backend simulé (Compose)** : aucun accès microphone, champ « Tour vocal simulé » explicite. Le texte traverse réellement le WebSocket, est enregistré et devient une demande dans le domaine. L’annonce audio du simulateur n’est pas une synthèse Polly réelle.
+- **Backend vocal réel configuré** : consentement navigateur, capture mono via AudioWorklet, conversion PCM16 à 16 kHz, trames avec séquence et génération, lecture du PCM serveur via Web Audio. Une interruption purge la file audio ; arrêt, erreur, déconnexion et sortie de page libèrent les pistes et le contexte. Aucun redémarrage automatique du micro.
+
+HTTPS ou boucle locale sont nécessaires. Nova/Polly et les identifiants AWS doivent être configurés/qualifiés côté serveur conformément à [l’étape 4](../../docs/stage4.md). Le frontend ne contient pas d’identifiants AWS et ne transforme pas le mode simulé en voix réelle. Pas d’intégration Alexa native.
 
 ## Vérifier
 
 ```powershell
 npm run build
 npm test -- --workers=2
-npx prettier --check src tests index.html package.json vite.config.ts playwright.config.ts tsconfig.json
-npm audit
+npx prettier --check src tests public/pcm-capture.js index.html vite.config.ts
 ```
 
-Les tests Playwright utilisent Chrome installé, avec deux configurations : ordinateur 1440 × 1000 et mobile Chromium émulant les dimensions/toucher d’un iPhone 13. **Ce n’est pas un test Safari/iOS réel.** Le serveur de test démarre sur 4178 ; s’il existe déjà, il est réutilisé hors CI. Pour tester le build de production, démarrer préalablement `npm run preview` sur ce port après un build réussi.
+Chrome installé est utilisé sur ordinateur et en mobile émulé (pas Safari/iOS). Les tests réseau interceptent des contrats synthétiques ; les tests audio utilisent le véritable graphe Web Audio et un périphérique Chrome synthétique. Le [rapport de raccordement](../../docs/verification/web-backend.md) sépare ces preuves de la recette Docker.
 
-Les tests couvrent les parcours observables, le retour de focus après fermeture d’un dialogue, la validation du formulaire, les états vides, les changements locaux, le contraste automatisé, les deux thèmes et l’absence de débordement jusqu’à 320 px. Les captures sont dans `test-results/` (ignoré par Git).
+Recette opt-in contre une stack locale active, depuis `apps/web` :
 
-Le [rapport de vérification](../../docs/verification/interface.md) décrit les résultats et leur portée. Aucun contrôle automatisé ne remplace une évaluation complète avec lecteurs d’écran et appareils physiques.
+```powershell
+$env:KOYORI_WEB_LIVE = '1'
+npm test -- --workers=1 backend
+```
+
+Pour une stack isolée, fournir `KOYORI_API_TARGET` et `KOYORI_WEB_COMPOSE_ENV` (chemin depuis la racine du dépôt). La recette crée une identité et un foyer synthétiques distincts par exécution, des souvenirs et demandes, puis approuve un panier du simulateur. Elle conserve ces fixtures côté serveur et désactive les traces/captures/vidéos contenant les jetons. Aucun compte externe ni fournisseur facturable n’est appelé. Les tests Docker sont explicitement exclus de la CI frontend sans backend ; ils ont été exécutés localement.
 
 ## Organisation
 
-- `src/App.tsx` : état local, navigation, actions et vues secondaires.
-- `src/Overview.tsx` : composition de la vue du jour.
-- `src/components.tsx` : cartes de demandes, chronologie et état vide.
-- `src/Dialog.tsx` : dialogue HTML natif, focus et touche Échap.
-- `src/demo.ts` : fixtures synthétiques et types métier de la démonstration.
-- `src/styles.css` : tokens, composants, thèmes et adaptations responsive.
-- `public/` : images WebP générées puis optimisées et favicon issu de Phosphor.
+- `src/App.tsx` : connexion, navigation et vues alimentées par l’API.
+- `src/api.ts` : contrats HTTP, pagination, délais, révisions et idempotence.
+- `src/QuoteApproval.tsx` : challenge, preuve fraîche et décision sur le panier.
+- `src/voice.ts`, `public/pcm-capture.js` : transport WebSocket, capture PCM et lecture.
+- `src/DemoApp.tsx`, `src/Overview.tsx`, `src/demo.ts` : ancienne démonstration explicite.
+- `src/Dialog.tsx`, `src/components.tsx`, `src/styles.css` : primitives visuelles partagées.
 
-CSS natif et dialogues HTML ont été retenus plutôt qu’un système de composants complet : le nombre de primitives est réduit, les interactions reposent sur le navigateur et le design reste cohérent. Aucune bibliothèque d’animation ou de gestion d’état globale n’est nécessaire ici. Manrope est auto-hébergée via Fontsource (OFL-1.1), les icônes proviennent de Phosphor (MIT). Le code conserve la licence Apache-2.0 du dépôt.
-
-## Limites et raccordement suivant
-
-L’interface n’est pas encore une PWA hors ligne et n’inclut ni authentification, ni autorisations multi-utilisateur, ni persistance serveur. Les badges personnel/partagé décrivent des fixtures, pas une isolation effective dans ce frontend. Il n’y a pas de résultat réseau à charger et donc pas de faux état de chargement.
-
-Le raccordement doit utiliser les contrats de [l’API](../../docs/api.md) et de [coordination](../../docs/stage3.md), puis le transport vocal de l’étape 4. Les autorisations, devis, reçus et changements de mémoire doivent rester validés par le backend ; les données de cet onglet ne constituent aucune autorité d’exécution. Ne pas brancher directement les boutons d’approbation sur un fournisseur.
+Aucune dépendance ajoutée. React, dialogues natifs et Web Audio suffisent ; Manrope et Phosphor restent servis localement. Les contrats serveur restent l’autorité. Références AudioWorklet consultées le 2026-10-07 : [traitement dans un worklet](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_AudioWorklet), [fréquence du contexte](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletGlobalScope/sampleRate).
 
 ### Visuel
 

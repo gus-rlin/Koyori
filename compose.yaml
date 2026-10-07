@@ -22,6 +22,7 @@ x-runtime: &runtime
     KOYORI_PLANNING_MODE: simulated
     KOYORI_LEARNING_MODE: simulated
     KOYORI_SPEECH_MODE: simulated
+    KOYORI_ALLOWED_ORIGINS: ${KOYORI_ALLOWED_ORIGINS:-http://127.0.0.1:5178,http://127.0.0.1:4178,http://127.0.0.1:5173}
     KOYORI_VOICE_URL: ws://127.0.0.1:${KOYORI_VOICE_PORT:-8099}/ws
     KOYORI_MCP_RESOURCE: http://127.0.0.1:${KOYORI_API_PORT:-8088}/mcp
   depends_on:

@@ -12,7 +12,7 @@ La [mémoire inspirée de Hermes](docs/memory-hermes.md) ajoute contexte durable
 
 Une [interface React/TypeScript](apps/web/README.md) permet d’explorer la vue du jour, les demandes, le panier, la mémoire et les routines. Depuis `apps/web`, exécuter `npm ci` puis `npm run dev` et ouvrir [Koyori localement](http://127.0.0.1:5178).
 
-**Démonstration interactive autonome** : données fictives et changements limités à l’onglet, réinitialisés au rechargement. Le frontend n’est pas connecté au backend, à Alexa ou aux comptes externes. Aucun microphone ni achat réel. Les [vérifications de l’interface](docs/verification/interface.md) distinguent les parcours testés des intégrations restant à réaliser.
+**Interface connectée au backend par défaut** : connexion par jeton d’accès, sélection du foyer, données persistantes et commandes validées côté serveur. La voix utilise le transport WebSocket existant : texte explicitement simulé en Docker, microphone/PCM lorsque le backend vocal réel est configuré. Les fournisseurs locaux restent simulés ; Nova/Polly réels ne sont pas qualifiés. La démonstration autonome reste accessible avec `?demo=1`. Voir [configuration et identité](apps/web/README.md) et [vérifications du raccordement](docs/verification/web-backend.md).
 
 ### Backend
 

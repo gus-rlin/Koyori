@@ -1,1018 +1,1061 @@
-import { useEffect, useState, type FormEvent } from "react";
 import {
-  ArrowRightIcon,
-  ArrowUpRightIcon,
-  BellIcon,
-  BookOpenIcon,
-  CalendarBlankIcon,
-  CaretDownIcon,
-  CheckIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  GearSixIcon,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import {
+  WaveformIcon,
   HouseLineIcon,
-  LeafIcon,
+  SparkleIcon,
+  BookOpenIcon,
+  ArrowClockwiseIcon,
+  PlugsConnectedIcon,
+  GearSixIcon,
   ListIcon,
   MicrophoneIcon,
-  MoonIcon,
-  PauseIcon,
-  PlayIcon,
-  PlusIcon,
-  PlugsConnectedIcon,
-  ShoppingBagIcon,
-  SparkleIcon,
+  ArrowRightIcon,
   SunIcon,
-  TrashIcon,
-  UsersIcon,
-  WaveformIcon,
-  XIcon,
-  ArrowClockwiseIcon,
-  PencilSimpleIcon,
-  MagnifyingGlassIcon,
-  ShieldCheckIcon,
+  MoonIcon,
 } from "@phosphor-icons/react";
-import { Overview } from "./Overview";
-import { TaskCard, Empty, Timeline } from "./components";
-import { initialActivity } from "./demo";
-import type { Page, Modal } from "./ui-types";
-import { Dialog } from "./Dialog";
 import {
-  initialTasks,
-  initialMemories,
-  initialRoutines,
-  statusLabels,
-  type Task,
-} from "./demo";
-
+  Api,
+  ApiError,
+  objectPath,
+  type Household,
+  type Goal,
+  type Memory,
+  type Routine,
+  type Connection,
+  type Activity,
+  type Quote,
+} from "./api";
+import { Dialog } from "./Dialog";
+import { Empty } from "./components";
+import { Voice } from "./voice";
+import { QuoteApproval } from "./QuoteApproval";
+import type { Page } from "./ui-types";
+const Demo = lazy(() => import("./DemoApp"));
 const pages = [
   { id: "today", label: "Aujourd’hui", icon: HouseLineIcon },
   { id: "tasks", label: "Mes demandes", icon: SparkleIcon },
   { id: "memory", label: "Ma mémoire", icon: BookOpenIcon },
   { id: "routines", label: "Routines", icon: ArrowClockwiseIcon },
   { id: "services", label: "Services", icon: PlugsConnectedIcon },
+  { id: "activity", label: "Activité", icon: ListIcon },
+  { id: "settings", label: "Réglages", icon: GearSixIcon },
 ] as const;
-function currentPage(): Page {
-  const hash = window.location.hash.slice(1);
-  return [...pages.map((p) => p.id), "activity", "settings"].includes(hash)
-    ? (hash as Page)
-    : "today";
-}
+const statuses: Record<string, string> = {
+  ACCEPTED: "Enregistrée",
+  READY: "À traiter",
+  RUNNING: "En cours",
+  PLANNING: "Préparation du plan",
+  WAITING_APPROVAL: "Votre accord est attendu",
+  WAITING: "En attente",
+  PAUSED: "En pause",
+  SUCCEEDED: "Terminée",
+  FAILED: "Échec",
+  CANCELLED: "Annulée",
+  CANCELLING: "Annulation en cours",
+  NEEDS_ATTENTION: "À préciser",
+};
+const currentPage = () =>
+  (pages.find((page) => page.id === location.hash.slice(1))?.id ??
+    "today") as Page;
+const message = (error: unknown) =>
+  error instanceof Error ? error.message : "Opération indisponible.";
+const dateTime = (value: number) =>
+  new Date(value * 1000).toLocaleString("fr-FR");
+type Data = {
+  goals: Goal[];
+  memories: Memory[];
+  routines: Routine[];
+  connections: Connection[];
+  activity: Activity[];
+};
+const empty: Data = {
+  goals: [],
+  memories: [],
+  routines: [],
+  connections: [],
+  activity: [],
+};
+type Selection =
+  | { kind: "goal"; item: Goal }
+  | { kind: "memory"; item: Memory }
+  | { kind: "quote"; item: Quote; goal: Goal; stepId: string }
+  | { kind: "new" }
+  | null;
+
 export default function App() {
+  return new URLSearchParams(location.search).get("demo") === "1" ? (
+    <Suspense fallback={<p>Chargement de la démonstration…</p>}>
+      <Demo />
+    </Suspense>
+  ) : (
+    <ConnectedApp />
+  );
+}
+function ConnectedApp() {
+  const [token, setToken] = useState("");
+  const [credentials, setCredentials] = useState("");
+  const [households, setHouseholds] = useState<Household[]>([]);
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [authError, setAuthError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const loginApi = useRef<Api | null>(null);
+  async function login(event: FormEvent) {
+    event.preventDefault();
+    if (connecting || loginApi.current || !token.trim()) return;
+    setConnecting(true);
+    setAuthError("");
+    setHouseholds([]);
+    setCredentials("");
+    const supplied = token.trim();
+    const client = (loginApi.current = new Api(supplied));
+    try {
+      const items = await client.list<Household>("households");
+      setHouseholds(items);
+      setCredentials(supplied);
+      setToken("");
+      if (items.length === 1) setHousehold(items[0]);
+      if (!items.length)
+        setAuthError("Aucun foyer accessible pour cette identité.");
+    } catch (error) {
+      setAuthError(message(error));
+    } finally {
+      client.dispose();
+      loginApi.current = null;
+      setConnecting(false);
+    }
+  }
+  useEffect(() => () => loginApi.current?.dispose(), []);
+  const logout = useCallback((reason = "") => {
+    setCredentials("");
+    setToken("");
+    setHousehold(null);
+    setHouseholds([]);
+    setAuthError(reason);
+  }, []);
+  if (household && credentials)
+    return (
+      <Home
+        key={household.id}
+        token={credentials}
+        household={household}
+        logout={logout}
+      />
+    );
+  return (
+    <main className="connection-page">
+      <a className="brand" href="/">
+        {" "}
+        <WaveformIcon size={32} /> koyori.
+      </a>
+      <h1>Retrouver votre maison</h1>
+      <p>
+        Connectez votre espace personnel au backend Koyori. Vos demandes et
+        souvenirs restent enregistrés côté serveur.
+      </p>
+      <form onSubmit={login} className="connection-form">
+        <label className="field-label" htmlFor="access-token">
+          Jeton d’accès Koyori
+        </label>
+        <input
+          id="access-token"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          required
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+        />
+        <p className="panel-note">
+          Utilisez un jeton d’accès émis par votre environnement. Il reste en
+          mémoire et sera oublié au rechargement.
+        </p>
+        <button className="primary-button" disabled={connecting}>
+          {connecting ? "Connexion…" : "Se connecter"}
+          <ArrowRightIcon size={18} />
+        </button>
+      </form>
+      {authError && (
+        <p role="alert" className="form-error">
+          {authError}
+        </p>
+      )}
+      {households.length > 0 && (
+        <section aria-label="Choisir un foyer">
+          <h2>Choisir votre foyer</h2>
+          {households.map((item) => (
+            <button
+              className="light-button"
+              key={item.id}
+              onClick={() => setHousehold(item)}
+            >
+              {item.name}
+            </button>
+          ))}
+        </section>
+      )}
+      <p className="panel-note">
+        L’environnement Docker utilise des identités et fournisseurs simulés.
+        Aucun accès Alexa natif.
+      </p>
+      <a className="text-button" href="/?demo=1">
+        Explorer la démonstration sans connexion
+      </a>
+    </main>
+  );
+}
+function Home({
+  token,
+  household,
+  logout,
+}: {
+  token: string;
+  household: Household;
+  logout: (reason?: string) => void;
+}) {
+  // New instance for every mounted identity/household. StrictMode cleanup never reuses a disposed API.
+  const apiRef = useRef<Api | null>(null);
+  const [data, setData] = useState<Data>(empty);
   const [page, setPage] = useState<Page>(currentPage);
-  const [mobileNav, setMobileNav] = useState(false);
-  const [tasks, setTasks] = useState(initialTasks);
-  const [memories, setMemories] = useState(initialMemories);
-  const [routines, setRoutines] = useState(initialRoutines);
-  const [activities, setActivities] = useState(initialActivity);
-  const [approval, setApproval] = useState<"pending" | "approved" | "declined">(
-    "pending",
-  );
-  const [modal, setModal] = useState<Modal>(null);
-  const [filter, setFilter] = useState("all");
+  const [mobile, setMobile] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const mutationBusy = useRef(false);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
-  const [toast, setToast] = useState("");
-  const [theme, setTheme] = useState<"light" | "dark">(() =>
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light",
+  const [filter, setFilter] = useState("all");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dark, setDark] = useState(
+    () => matchMedia("(prefers-color-scheme: dark)").matches,
   );
-  const [newTitle, setNewTitle] = useState("");
-  const [formError, setFormError] = useState("");
-  const [memoryText, setMemoryText] = useState("");
-  const [deleteMemory, setDeleteMemory] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("Microphone inactif.");
+  const [voiceText, setVoiceText] = useState("");
+  const [voiceResult, setVoiceResult] = useState("");
+  const [voiceActive, setVoiceActive] = useState(false);
+  const voice = useRef<Voice | null>(null);
+  const refreshRun = useRef(0);
+  const refresh = useCallback(
+    async (client: Api) => {
+      const run = ++refreshRun.current;
+      try {
+        const [goals, memories, routines, connections, activity] =
+          await Promise.all([
+            client.list<Goal>("goals"),
+            client.list<Memory>("memories"),
+            client.list<Routine>("routines"),
+            client.list<Connection>("connections"),
+            client.list<Activity>("activity"),
+          ]);
+        if (apiRef.current !== client || run !== refreshRun.current) return;
+        setData({ goals, memories, routines, connections, activity });
+        setError("");
+      } catch (error) {
+        if (apiRef.current !== client || run !== refreshRun.current) return;
+        setData(empty);
+        setSelection(null);
+        setError(message(error));
+        if (
+          error instanceof ApiError &&
+          (error.status === 401 || error.status === 403)
+        )
+          logout(message(error));
+      } finally {
+        if (apiRef.current === client && run === refreshRun.current)
+          setLoading(false);
+      }
+    },
+    [logout],
+  );
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const client = (apiRef.current = new Api(token, household.id));
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (!document.hidden && !mutationBusy.current) await refresh(client);
+      if (!stopped) timer = setTimeout(poll, 10000);
+    };
+    void poll();
+    const leave = () => voice.current?.close();
+    window.addEventListener("pagehide", leave);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      apiRef.current = null;
+      client.dispose();
+      voice.current?.close();
+      window.removeEventListener("pagehide", leave);
+    };
+  }, [token, household.id, refresh]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  }, [dark]);
   useEffect(() => {
     const change = () => {
       setPage(currentPage());
-      setMobileNav(false);
+      setMobile(false);
+      setSelection(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobile(false);
     };
     window.addEventListener("hashchange", change);
-    return () => window.removeEventListener("hashchange", change);
-  }, []);
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 4500);
-    return () => clearTimeout(timer);
-  }, [toast]);
-  useEffect(() => {
-    if (!mobileNav) return;
-    const dismiss = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMobileNav(false);
-        document.querySelector<HTMLButtonElement>(".mobile-menu")?.focus();
-      }
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("hashchange", change);
+      window.removeEventListener("keydown", escape);
     };
-    document.addEventListener("keydown", dismiss);
-    return () => document.removeEventListener("keydown", dismiss);
-  }, [mobileNav]);
+  }, []);
   const navigate = (next: Page) => {
-    window.location.hash = next;
+    location.hash = next;
     setPage(next);
-    setMobileNav(false);
-    window.scrollTo({ top: 0 });
+    setMobile(false);
     document.getElementById("main")?.focus();
   };
-  const log = (title: string, detail: string) =>
-    setActivities((prev) => [
-      { id: crypto.randomUUID(), title, detail, time: "À l’instant" },
-      ...prev,
-    ]);
-  const open = (next: Modal) => {
-    setFormError("");
-    setNewTitle("");
-    setDeleteMemory(false);
-    if (next?.type === "memory")
-      setMemoryText(memories.find((m) => m.id === next.id)?.text ?? "");
-    setModal(next);
+  const open = (next: Selection) => {
+    setSelection(next);
+    setError("");
+    setNotice("");
+    setConfirmDelete(false);
+    setDraft(next?.kind === "memory" ? next.item.text : "");
   };
-  const close = () => setModal(null);
-  const activeTasks = tasks.filter(
-    (t) => t.status === "active" || t.status === "paused",
-  );
-  const selectedTask =
-    modal?.type === "task" ? tasks.find((t) => t.id === modal.id) : undefined;
-  const selectedMemory =
-    modal?.type === "memory"
-      ? memories.find((m) => m.id === modal.id)
-      : undefined;
-  const awaitingApproval =
-    approval === "pending" &&
-    tasks.find((t) => t.id === "groceries")?.status === "active";
-  const changeTask = (task: Task, status: Task["status"]) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === task.id ? { ...t, status } : t)),
-    );
-    if (
-      task.id === "groceries" &&
-      status === "active" &&
-      approval === "declined"
-    )
-      setApproval("pending");
-    log(
-      `${task.title} : ${statusLabels[status].toLocaleLowerCase("fr")}`,
-      "Modification dans la démonstration",
-    );
-    setToast("La demande de démonstration a été mise à jour.");
-  };
-  const decideApproval = (decision: "approved" | "declined") => {
-    if (!awaitingApproval) return;
-    setApproval(decision);
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id !== "groceries"
-          ? t
-          : {
-              ...t,
-              status: decision === "declined" ? "paused" : "active",
-              completed: decision === "approved" ? 3 : 2,
-            },
+  async function mutate(work: (api: Api) => Promise<unknown>) {
+    const client = apiRef.current;
+    if (!client || mutationBusy.current) return;
+    mutationBusy.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    ++refreshRun.current; // A pre-write poll must not replace a confirmed write with an older snapshot.
+    try {
+      await work(client);
+      if (apiRef.current !== client) return;
+      setSelection(null);
+      setNotice("Modification enregistrée par le serveur.");
+      await refresh(client);
+    } catch (error) {
+      if (apiRef.current !== client) return;
+      setError(message(error));
+      if (error instanceof ApiError && error.status === 401)
+        logout(message(error));
+    } finally {
+      mutationBusy.current = false;
+      setBusy(false);
+    }
+  }
+  const control = (
+    resource: string,
+    item: { id: string; rev: number },
+    action: string,
+  ) =>
+    void mutate((api) =>
+      api.request(
+        `${objectPath(resource, item.id)}/${action}`,
+        "POST",
+        {},
+        item.rev,
       ),
     );
-    log(
-      decision === "approved"
-        ? "Le panier a été approuvé dans la démo"
-        : "Le panier a été mis de côté",
-      "Aucune commande transmise à un commerçant",
-    );
-    setToast(
-      decision === "approved"
-        ? "Accord simulé enregistré. Aucun achat effectué."
-        : "Panier mis de côté. La demande est en pause.",
-    );
-    close();
-  };
-  const createTask = (event: FormEvent) => {
-    event.preventDefault();
-    const title = newTitle.trim();
-    if (title.length < 5) {
-      setFormError("Décrivez votre demande en au moins 5 caractères.");
-      return;
+  async function showQuote(goal: Goal, stepId: string, quoteId: string) {
+    const client = apiRef.current;
+    if (!client) return;
+    try {
+      const quote = await client.request<Quote>(objectPath("quotes", quoteId));
+      if (apiRef.current === client)
+        open({ kind: "quote", item: quote, goal, stepId });
+    } catch (error) {
+      if (apiRef.current === client) setError(message(error));
     }
-    setTasks((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        title,
-        description: "Demande ajoutée au scénario. En attente d’un plan.",
-        category: "home",
-        time: "Sans échéance",
-        status: "active",
-        steps: [
-          "Demande enregistrée localement",
-          "Préparer un plan",
-          "Vérifier les prochaines actions",
-        ],
-        completed: 1,
+  }
+  function startVoice() {
+    if (voice.current || !apiRef.current) return;
+    setVoiceActive(true);
+    setVoiceResult("");
+    setVoiceStatus("Connexion au service vocal…");
+    const client = apiRef.current;
+    const session = new Voice(client, {
+      status: setVoiceStatus,
+      result: setVoiceResult,
+      changed: () => {
+        void refresh(client);
       },
-    ]);
-    log("Une nouvelle demande a été ajoutée", title);
-    close();
-    navigate("tasks");
-    setToast("Demande ajoutée à la démonstration.");
-  };
-  const saveMemory = (event: FormEvent) => {
-    event.preventDefault();
-    if (!memoryText.trim()) {
-      setFormError("Ajoutez une préférence avant d’enregistrer.");
-      return;
-    }
-    setMemories((prev) =>
-      prev.map((m) =>
-        m.id === selectedMemory?.id
-          ? {
-              ...m,
-              text: memoryText.trim(),
-              source: "Corrigée par vous pendant cette démonstration",
-            }
-          : m,
-      ),
+      ended: () => {
+        voice.current = null;
+        setVoiceActive(false);
+      },
+    });
+    voice.current = session;
+    void session.start();
+  }
+  const tasks = data.goals.filter(
+    (goal) =>
+      filter === "all" ||
+      (filter === "finished"
+        ? ["SUCCEEDED", "CANCELLED", "FAILED"].includes(goal.status)
+        : !["SUCCEEDED", "CANCELLED", "FAILED"].includes(goal.status)),
+  );
+  const goalCards = (goals: Goal[]) =>
+    goals.length ? (
+      <div className="task-grid">
+        {goals.map((goal) => (
+          <button
+            className="task-card"
+            key={goal.id}
+            onClick={() => open({ kind: "goal", item: goal })}
+          >
+            <span className="badge">
+              {statuses[goal.status] ?? goal.status}
+            </span>
+            <h2>{goal.goal}</h2>
+            <p>
+              {goal.plan?.summary ??
+                "Le backend prépare la suite de votre demande."}
+            </p>
+          </button>
+        ))}
+      </div>
+    ) : (
+      <Empty
+        title="Aucune demande à afficher"
+        text="Confiez une nouvelle demande à Koyori."
+      />
     );
-    log("Une préférence a été corrigée", selectedMemory?.title ?? "Mémoire");
-    close();
-    setToast("Préférence corrigée dans la démonstration.");
-  };
-  const heading =
-    pages.find((p) => p.id === page)?.label ??
-    (page === "settings" ? "Réglages" : "Activité");
+  const activities = (
+    <>
+      {data.activity.length ? (
+        <ol className="timeline">
+          {[...data.activity].reverse().map((item, index) => (
+            <li key={item.id ?? `${item.sequence}-${index}`}>
+              <time>{item.occurredAt ? dateTime(item.occurredAt) : ""}</time>
+              <div>
+                <strong>{item.type}</strong>
+                <p>Référence : {item.aggregateId}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <Empty
+          title="Aucune activité disponible"
+          text="Les événements du backend apparaîtront ici."
+        />
+      )}
+    </>
+  );
+  const heading = pages.find((item) => item.id === page)!.label;
   return (
-    <div className="app-shell">
+    <div className="app-shell connected">
       <a href="#main" className="skip-link">
         Aller au contenu
       </a>
-      {mobileNav && (
+      {mobile && (
         <button
           className="nav-backdrop"
           aria-label="Fermer la navigation"
-          onClick={() => setMobileNav(false)}
+          onClick={() => setMobile(false)}
         />
       )}
       <aside
-        className={`sidebar ${mobileNav ? "is-open" : ""}`}
+        className={`sidebar ${mobile ? "is-open" : ""}`}
         aria-label="Navigation principale"
       >
         <a className="brand" href="#today" onClick={() => navigate("today")}>
           <span className="brand-mark">
-            <WaveformIcon weight="bold" size={27} />
+            <WaveformIcon size={27} />
           </span>
           koyori<span className="brand-period">.</span>
         </a>
-        <button
-          className="household"
-          onClick={() => open({ type: "household" })}
-        >
-          <span className="household-icon">
-            <HouseLineIcon size={19} />
-          </span>
+        <div className="household">
+          <HouseLineIcon size={22} />
           <span>
-            À la maison<small>Foyer de démonstration</small>
+            {household.name}
+            <small>Espace personnel connecté</small>
           </span>
-          <CaretDownIcon size={13} />
-        </button>
+        </div>
         <nav>
-          {pages.map(({ id, label, icon: Symbol }) => (
+          {pages.map(({ id, label, icon: Icon }) => (
             <a
               key={id}
               href={`#${id}`}
               onClick={() => navigate(id)}
               aria-current={page === id ? "page" : undefined}
             >
-              <Symbol size={20} weight={page === id ? "fill" : "regular"} />
+              <Icon size={20} />
               <span>{label}</span>
-              {id === "tasks" && activeTasks.length > 0 && (
-                <span className="nav-count">{activeTasks.length}</span>
-              )}
             </a>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="presence-note">
-            <span className="presence-symbol">
-              <LeafIcon size={24} weight="light" />
-            </span>
-            <p>
-              Un peu moins à penser.
-              <br />
-              <strong>Un peu plus à vivre.</strong>
-            </p>
-          </div>
-          <button
-            className={`settings-link ${page === "settings" ? "selected" : ""}`}
-            onClick={() => navigate("settings")}
-          >
-            <GearSixIcon size={20} />
-            Réglages
-          </button>
-          <button
-            className="profile"
-            onClick={() => open({ type: "household" })}
-          >
-            <span className="avatar">A</span>
-            <span>
-              Alex<small>Espace personnel</small>
-            </span>
-            <CaretDownIcon size={14} />
+          <p className="panel-note">
+            Vos données viennent du backend. Les modes simulés restent indiqués.
+          </p>
+          <button className="text-button" onClick={() => logout()}>
+            Se déconnecter
           </button>
         </div>
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              className="icon-button mobile-menu"
-              aria-label="Ouvrir la navigation"
-              aria-expanded={mobileNav}
-              onClick={() => setMobileNav((v) => !v)}
-            >
-              <ListIcon size={23} />
-            </button>
-            <span>Mon espace</span>
-            <span className="breadcrumb-slash">/</span>
-            <strong>{heading}</strong>
-          </div>
-          <div className="top-actions">
-            <span className="demo-label">Démonstration</span>
-            <button
-              className="icon-button"
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-              aria-label={
-                theme === "light"
-                  ? "Activer le thème sombre"
-                  : "Activer le thème clair"
+          <button
+            className="icon-button mobile-menu"
+            aria-label="Ouvrir la navigation"
+            aria-expanded={mobile}
+            onClick={() => setMobile(!mobile)}
+          >
+            <ListIcon size={24} />
+          </button>
+          <strong>{heading}</strong>
+          <button
+            className="light-button"
+            disabled={loading || busy}
+            onClick={() => {
+              if (apiRef.current) {
+                setLoading(true);
+                void refresh(apiRef.current);
               }
-            >
-              {theme === "light" ? (
-                <MoonIcon size={20} />
-              ) : (
-                <SunIcon size={20} />
-              )}
-            </button>
-            <button
-              className="icon-button"
-              aria-label="Voir l’activité"
-              onClick={() => navigate("activity")}
-            >
-              <BellIcon size={20} />
-            </button>
-            <span className="avatar small" aria-label="Profil Alex">
-              A
-            </span>
-          </div>
+            }}
+          >
+            Actualiser
+          </button>
         </header>
         <main id="main" tabIndex={-1}>
-          {page === "today" ? (
-            <Overview
-              activeTasks={activeTasks}
-              memories={memories}
-              activities={activities}
-              awaitingApproval={awaitingApproval}
-              approval={approval}
-              open={open}
-              navigate={navigate}
-            />
-          ) : (
+          {loading && <p role="status">Chargement du foyer…</p>}
+          {error && (
+            <p role="alert" className="form-error">
+              {error}
+            </p>
+          )}
+          {notice && (
+            <p role="status" className="inline-note">
+              {notice}
+            </p>
+          )}
+          {page === "today" && (
             <>
-              <div className="page-heading">
-                <div>
-                  <span className="small-label">Votre espace personnel</span>
-                  <h1>{heading}</h1>
+              <div className="day-heading">
+                {new Date().toLocaleDateString("fr-FR", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  timeZone: household.timeZone,
+                })}
+              </div>
+              <section className="welcome">
+                <div className="welcome-copy">
+                  <div className="greeting-label">
+                    Votre quotidien, en bonne compagnie
+                  </div>
+                  <h1>
+                    Bienvenue chez vous<span>.</span>
+                    <br />
+                    L’esprit un peu plus libre.
+                  </h1>
                   <p>
-                    {page === "tasks"
-                      ? "Ce que vous confiez, ce qui avance, ce qui vous attend."
-                      : page === "memory"
-                        ? "Les petites choses que Koyori retient. Vous gardez le dernier mot."
-                        : page === "routines"
-                          ? "Un quotidien plus léger, une habitude à la fois."
-                          : page === "services"
-                            ? "Les liens entre votre quotidien et Koyori."
-                            : page === "settings"
-                              ? "Une présence qui s’adapte à vous."
-                              : "Retrouvez le fil de vos demandes et de vos décisions."}
+                    {data.goals.length} demandes enregistrées dans votre espace.
                   </p>
-                </div>
-                {page === "tasks" && (
                   <button
                     className="primary-button"
-                    onClick={() => open({ type: "new" })}
+                    onClick={() => open({ kind: "new" })}
                   >
-                    <PlusIcon size={18} />
-                    Nouvelle demande
+                    Confier une demande
+                    <ArrowRightIcon size={18} />
                   </button>
-                )}
+                </div>
+                <div className="welcome-image">
+                  <img
+                    src="/home.webp"
+                    srcSet="/home-small.webp 800w, /home.webp 1200w"
+                    sizes="(max-width: 767px) calc(100vw - 40px), 45vw"
+                    alt="Un salon lumineux ouvert sur un jardin"
+                    width="768"
+                    height="512"
+                  />
+                </div>
+              </section>
+              <section className="requests-section">
+                <div className="section-heading">
+                  <h2>Je m’en occupe</h2>
+                  <button
+                    className="text-button"
+                    onClick={() => navigate("tasks")}
+                  >
+                    Tout voir
+                  </button>
+                </div>
+                {goalCards(data.goals.slice(0, 4))}
+              </section>
+              <section className="activity-section">
+                <h2>Les dernières attentions</h2>
+                {activities}
+              </section>
+            </>
+          )}
+          {page !== "today" && (
+            <div className="page-heading">
+              <h1>{heading}</h1>
+            </div>
+          )}
+          {page === "tasks" && (
+            <>
+              <div className="connected-actions">
+                <button
+                  className="primary-button"
+                  onClick={() => open({ kind: "new" })}
+                >
+                  Nouvelle demande
+                </button>
+                <label>
+                  Afficher{" "}
+                  <select
+                    value={filter}
+                    onChange={(event) => setFilter(event.target.value)}
+                  >
+                    <option value="all">Toutes</option>
+                    <option value="active">À suivre</option>
+                    <option value="finished">Terminées</option>
+                  </select>
+                </label>
               </div>
-              {page === "tasks" && (
-                <>
-                  <div className="filter-bar" aria-label="Filtrer les demandes">
-                    {[
-                      ["all", "Toutes"],
-                      ["active", "En cours"],
-                      ["paused", "En pause"],
-                      ["done", "Terminées"],
-                      ["cancelled", "Annulées"],
-                    ].map(([id, label]) => (
-                      <button
-                        key={id}
-                        aria-pressed={filter === id}
-                        className={filter === id ? "selected" : ""}
-                        onClick={() => setFilter(id)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="task-grid full-grid">
-                    {tasks
-                      .filter((t) => filter === "all" || t.status === filter)
-                      .map((t) => (
-                        <TaskCard
-                          key={t.id}
-                          task={t}
-                          onOpen={() => open({ type: "task", id: t.id })}
-                        />
-                      ))}
-                  </div>
-                  {!tasks.some(
-                    (t) => filter === "all" || t.status === filter,
-                  ) && (
-                    <Empty
-                      title="Tout est tranquille ici"
-                      text="Aucune demande dans cette catégorie pour le moment."
-                    />
-                  )}
-                </>
-              )}
-              {page === "memory" && (
-                <>
-                  <label className="search-field">
-                    <MagnifyingGlassIcon size={20} />
-                    <input
-                      aria-label="Rechercher un souvenir"
-                      placeholder="Retrouver une préférence…"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                    />
-                  </label>
-                  <div className="memory-grid">
-                    {memories
-                      .filter((m) =>
-                        `${m.title} ${m.text}`
-                          .toLocaleLowerCase("fr")
-                          .includes(query.toLocaleLowerCase("fr")),
-                      )
-                      .map((m) => (
-                        <article className="memory-card" key={m.id}>
-                          <div className="memory-card-top">
-                            <BookOpenIcon size={22} />
-                            <span className="badge">
-                              {m.shared ? "Partagé avec le foyer" : "Personnel"}
-                            </span>
-                          </div>
-                          <h2>{m.title}</h2>
-                          <p>{m.text}</p>
-                          <small>{m.source}</small>
-                          <button
-                            className="text-button"
-                            onClick={() => open({ type: "memory", id: m.id })}
-                          >
-                            Corriger ce souvenir
-                            <PencilSimpleIcon size={16} />
-                          </button>
-                        </article>
-                      ))}
-                  </div>
-                  {!memories.some((m) =>
-                    `${m.title} ${m.text}`
+              {goalCards(tasks)}
+            </>
+          )}
+          {page === "memory" && (
+            <>
+              <label className="field-label" htmlFor="memory-search">
+                Rechercher dans les souvenirs chargés
+              </label>
+              <input
+                id="memory-search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <div className="connected-list">
+                {data.memories
+                  .filter((item) =>
+                    item.text
                       .toLocaleLowerCase("fr")
                       .includes(query.toLocaleLowerCase("fr")),
-                  ) && (
-                    <Empty
-                      title="Aucun souvenir trouvé"
-                      text="Essayez un autre mot ou effacez votre recherche."
-                    />
-                  )}
-                  <p className="privacy-note">
-                    <ShieldCheckIcon size={18} />
-                    Préférences fictives. Leur modification ne change aucune
-                    autorisation.
-                  </p>
-                </>
-              )}
-              {page === "routines" && (
-                <div className="rows-panel">
-                  {routines.map((r) => (
-                    <article className="routine-row" key={r.id}>
-                      <span className="tile-icon">
-                        <ArrowClockwiseIcon size={24} />
+                  )
+                  .map((item) => (
+                    <button
+                      className="task-card"
+                      key={item.id}
+                      onClick={() => open({ kind: "memory", item })}
+                    >
+                      <span className="badge">
+                        {item.visibility === "private" ? "Personnel" : "Foyer"}{" "}
+                        / {item.kind}
                       </span>
-                      <div>
-                        <h2>{r.title}</h2>
-                        <p>{r.description}</p>
-                        <small>
-                          <ClockIcon size={14} />
-                          {r.when}
-                        </small>
-                      </div>
-                      <button
-                        role="switch"
-                        aria-checked={r.enabled}
-                        aria-label={r.title}
-                        className={`switch ${r.enabled ? "on" : ""}`}
-                        onClick={() => {
-                          setRoutines((prev) =>
-                            prev.map((item) =>
-                              item.id === r.id
-                                ? { ...item, enabled: !item.enabled }
-                                : item,
-                            ),
-                          );
-                          log(
-                            `${r.title} : ${r.enabled ? "en pause" : "activée"}`,
-                            "Routine simulée, aucun réveil réel",
-                          );
-                          setToast("Routine modifiée dans la démonstration.");
-                        }}
-                      >
-                        <span />
-                      </button>
-                    </article>
+                      <p>{item.text}</p>
+                      <small>Source : {item.source?.kind}</small>
+                    </button>
                   ))}
-                  <p className="panel-note">
-                    Ces routines illustrent le fonctionnement prévu. Aucun
-                    déclenchement réel n’est programmé.
-                  </p>
-                </div>
+              </div>
+              {!data.memories.length && (
+                <Empty
+                  title="Aucun souvenir disponible"
+                  text="Vos souvenirs enregistrés par Koyori apparaîtront ici."
+                />
               )}
-              {page === "services" && (
-                <>
-                  <div className="service-grid">
-                    {[
-                      {
-                        name: "Google Calendar",
-                        icon: CalendarBlankIcon,
-                        copy: "Un agenda pour préparer votre journée.",
-                        state: "Agenda d’exemple",
-                      },
-                      {
-                        name: "Courses & repas",
-                        icon: ShoppingBagIcon,
-                        copy: "Vos habitudes, du panier à la table.",
-                        state: "Commerce simulé",
-                      },
-                      {
-                        name: "Alexa",
-                        icon: WaveformIcon,
-                        copy: "Parler naturellement, depuis la maison.",
-                        state: "Intégration à venir",
-                      },
-                    ].map((s) => (
-                      <article className="service-card" key={s.name}>
-                        <span className="tile-icon">
-                          <s.icon size={26} />
-                        </span>
-                        <h2>{s.name}</h2>
-                        <p>{s.copy}</p>
-                        <span className="badge">{s.state}</span>
-                        <button
-                          className="text-button"
-                          onClick={() =>
-                            open({ type: "service", name: s.name })
-                          }
-                        >
-                          Voir les possibilités
-                          <ArrowUpRightIcon size={16} />
-                        </button>
-                      </article>
-                    ))}
-                  </div>
-                  <p className="privacy-note">
-                    <ShieldCheckIcon size={18} />
-                    Aucun compte externe connecté à cette interface.
+            </>
+          )}
+          {page === "routines" && (
+            <div className="connected-list">
+              {data.routines.map((item) => (
+                <article className="connected-card" key={item.id}>
+                  <h2>{item.text}</h2>
+                  <p>
+                    {item.localTime} · {item.timeZone}
                   </p>
+                  <p>
+                    {!item.active
+                      ? "Désactivée"
+                      : item.paused
+                        ? "En pause"
+                        : "Active"}
+                  </p>
+                  {item.active && (
+                    <button
+                      className="light-button"
+                      disabled={busy}
+                      onClick={() =>
+                        control(
+                          "routines",
+                          item,
+                          item.paused ? "resume" : "pause",
+                        )
+                      }
+                    >
+                      {item.paused ? "Reprendre" : "Mettre en pause"}
+                    </button>
+                  )}
+                </article>
+              ))}
+              {!data.routines.length && (
+                <Empty
+                  title="Aucune routine enregistrée"
+                  text="Les routines configurées dans le backend apparaîtront ici."
+                />
+              )}
+            </div>
+          )}
+          {page === "services" && (
+            <>
+              <p>
+                Connexions enregistrées pour votre profil. L’état affiché ne
+                garantit pas la disponibilité du fournisseur.
+              </p>
+              <div className="connected-list">
+                {data.connections.map((item) => (
+                  <article className="connected-card" key={item.id}>
+                    <h2>{item.provider}</h2>
+                    <span className="badge">
+                      {item.mode === "simulated"
+                        ? "Simulé"
+                        : "Connexion réelle"}
+                    </span>
+                    <p>
+                      {item.active ? "Active" : "Révoquée"} {item.status}
+                    </p>
+                  </article>
+                ))}
+              </div>
+              {!data.connections.length && (
+                <Empty
+                  title="Aucun service connecté"
+                  text="Configurez les connecteurs dans votre environnement backend."
+                />
+              )}
+              <p className="panel-note">
+                L’intégration Alexa native et la connexion de nouveaux comptes
+                ne sont pas disponibles dans cet écran.
+              </p>
+            </>
+          )}
+          {page === "activity" && activities}
+          {page === "settings" && (
+            <section className="connected-card">
+              <h2>Votre espace</h2>
+              <p>
+                {household.name} · {household.timeZone}
+              </p>
+              <p>
+                Authentification par jeton d’accès. Aucun jeton ni donnée métier
+                n’est enregistré dans le stockage du navigateur. Un rechargement
+                demande une nouvelle connexion.
+              </p>
+              <button className="light-button" onClick={() => setDark(!dark)}>
+                {dark ? <SunIcon size={18} /> : <MoonIcon size={18} />}
+                {dark ? "Thème clair" : "Thème sombre"}
+              </button>
+              <button className="text-button" onClick={() => logout()}>
+                Changer de foyer ou se déconnecter
+              </button>
+            </section>
+          )}
+          <section className="voice-panel" aria-label="Conversation vocale">
+            <h2>
+              <MicrophoneIcon size={22} /> Parler à Koyori
+            </h2>
+            <p>
+              En mode vocal réel, votre microphone sera transmis au service
+              configuré après votre autorisation. La session est personnelle et
+              les tours finalisés sont conservés dans votre mémoire.
+            </p>
+            <p role="status">{voiceStatus}</p>
+            <div className="connected-actions">
+              {!voiceActive ? (
+                <button className="primary-button" onClick={startVoice}>
+                  Démarrer la voix
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="light-button"
+                    onClick={() => voice.current?.interrupt()}
+                  >
+                    Interrompre la réponse
+                  </button>
+                  <button
+                    className="light-button"
+                    onClick={() => {
+                      voice.current?.close();
+                      setVoiceStatus("Microphone inactif.");
+                    }}
+                  >
+                    Arrêter la voix
+                  </button>
                 </>
               )}
-              {page === "activity" && (
-                <section className="rows-panel activity-page">
-                  <Timeline activities={activities} />
-                </section>
+            </div>
+            {voiceActive &&
+              voice.current?.simulation &&
+              voice.current?.ready && (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    voice.current?.submit(voiceText);
+                    setVoiceText("");
+                  }}
+                >
+                  <label className="field-label" htmlFor="voice-test">
+                    Tour vocal simulé (texte de test)
+                  </label>
+                  <input
+                    id="voice-test"
+                    value={voiceText}
+                    maxLength={2000}
+                    required
+                    onChange={(event) => setVoiceText(event.target.value)}
+                  />
+                  <button className="light-button">
+                    Envoyer le tour de test
+                  </button>
+                </form>
               )}
-              {page === "settings" && (
-                <div className="rows-panel">
-                  <div className="setting-row">
-                    <div>
-                      <h2>Apparence</h2>
-                      <p>Un espace agréable, de jour comme de nuit.</p>
-                    </div>
+            {voiceResult && <p>{voiceResult}</p>}
+          </section>
+        </main>
+      </div>
+      {selection && (
+        <Dialog
+          title={
+            selection.kind === "new"
+              ? "Confier une demande"
+              : selection.kind === "memory"
+                ? "Corriger un souvenir"
+                : selection.kind === "quote"
+                  ? "Vérifier le panier"
+                  : "Suivre la demande"
+          }
+          onClose={() => {
+            if (!busy) setSelection(null);
+          }}
+        >
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <fieldset disabled={busy} className="connected-fieldset">
+            {selection.kind === "new" && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (draft.trim())
+                    void mutate((api) =>
+                      api.request("goals", "POST", { text: draft.trim() }),
+                    );
+                }}
+              >
+                <label className="field-label" htmlFor="goal-text">
+                  Votre demande
+                </label>
+                <textarea
+                  id="goal-text"
+                  value={draft}
+                  maxLength={2000}
+                  required
+                  rows={4}
+                  onChange={(event) => setDraft(event.target.value)}
+                />
+                <button className="primary-button">Confier à Koyori</button>
+              </form>
+            )}
+            {selection.kind === "goal" && (
+              <>
+                <span className="badge">
+                  {statuses[selection.item.status] ?? selection.item.status}
+                </span>
+                <p>{selection.item.goal}</p>
+                <p>{selection.item.plan?.summary}</p>
+                <p>{selection.item.plan?.clarification}</p>
+                <ol>
+                  {selection.item.plan?.steps.map((step) => (
+                    <li key={step.stepId}>
+                      {step.capability} —{" "}
+                      {selection.item.stepStates[step.stepId]?.status ??
+                        "En attente"}
+                      {selection.item.stepStates[step.stepId]?.status ===
+                        "WAITING_APPROVAL" &&
+                        selection.item.stepStates[step.stepId]?.quoteId && (
+                          <button
+                            className="light-button"
+                            onClick={() =>
+                              void showQuote(
+                                selection.item,
+                                step.stepId,
+                                selection.item.stepStates[step.stepId].quoteId!,
+                              )
+                            }
+                          >
+                            Voir le panier
+                          </button>
+                        )}
+                    </li>
+                  ))}
+                </ol>
+                {!["SUCCEEDED", "FAILED", "CANCELLED", "CANCELLING"].includes(
+                  selection.item.status,
+                ) && (
+                  <div className="connected-actions">
                     <button
                       className="light-button"
                       onClick={() =>
-                        setTheme(theme === "light" ? "dark" : "light")
+                        control(
+                          "goals",
+                          selection.item,
+                          selection.item.status === "PAUSED"
+                            ? "resume"
+                            : "pause",
+                        )
                       }
                     >
-                      {theme === "light" ? (
-                        <MoonIcon size={18} />
-                      ) : (
-                        <SunIcon size={18} />
-                      )}
-                      {theme === "light"
-                        ? "Passer au thème sombre"
-                        : "Passer au thème clair"}
+                      {selection.item.status === "PAUSED"
+                        ? "Reprendre"
+                        : "Mettre en pause"}
                     </button>
-                  </div>
-                  <div className="setting-row">
-                    <div>
-                      <h2>Votre foyer</h2>
-                      <p>Alex et Sam, profils fictifs du scénario.</p>
-                    </div>
                     <button
-                      className="text-button"
-                      onClick={() => open({ type: "household" })}
+                      className="text-button danger"
+                      onClick={() => control("goals", selection.item, "cancel")}
                     >
-                      Voir le foyer
-                      <ArrowRightIcon size={16} />
+                      Annuler la demande
                     </button>
                   </div>
-                  <div className="setting-row">
-                    <div>
-                      <h2>À propos de cette démonstration</h2>
-                      <p>
-                        Les modifications restent en mémoire dans cet onglet et
-                        sont réinitialisées au rechargement. Aucun achat, compte
-                        connecté ou enregistrement audio.
-                      </p>
-                    </div>
-                    <ShieldCheckIcon size={25} />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-          <footer className="page-footer">
-            <span>
-              <LeafIcon size={14} />
-              De la place pour l’essentiel.
-            </span>
-            <span>Données fictives · Modifications limitées à cet onglet</span>
-          </footer>
-        </main>
-        <div className="voice-dock">
-          <button
-            onClick={() => open({ type: "briefing" })}
-            className="voice-orb"
-            aria-label="Explorer la démonstration vocale"
-          >
-            <WaveformIcon size={24} />
-          </button>
-          <button className="dock-prompt" onClick={() => open({ type: "new" })}>
-            Qu’avez-vous en tête ?<span>Confiez-le à Koyori</span>
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => open({ type: "briefing" })}
-            aria-label="Disponibilité du microphone"
-          >
-            <MicrophoneIcon size={21} />
-          </button>
-        </div>
-      </div>
-      <div className={`toast ${toast ? "visible" : ""}`} role="status">
-        {toast && (
-          <>
-            <CheckCircleIcon size={20} />
-            {toast}
-            <button
-              className="icon-button"
-              aria-label="Masquer le message"
-              onClick={() => setToast("")}
-            >
-              <XIcon size={16} />
-            </button>
-          </>
-        )}
-      </div>
-      {modal && (
-        <Dialog
-          title={
-            modal.type === "new"
-              ? "Une chose en moins à penser."
-              : modal.type === "briefing"
-                ? "On fait le point ?"
-                : modal.type === "approval"
-                  ? "Votre panier de la semaine"
-                  : modal.type === "household"
-                    ? "À la maison"
-                    : modal.type === "service"
-                      ? modal.name!
-                      : modal.type === "task"
-                        ? (selectedTask?.title ?? "Demande")
-                        : (selectedMemory?.title ?? "Souvenir")
-          }
-          onClose={close}
-        >
-          {modal.type === "new" && (
-            <form onSubmit={createTask}>
-              <p>Ajoutez une demande au scénario pour découvrir son suivi.</p>
-              <label className="field-label" htmlFor="request">
-                Que souhaitez-vous confier ?
-              </label>
-              <textarea
-                id="request"
-                value={newTitle}
-                onChange={(e) => {
-                  setNewTitle(e.target.value);
-                  setFormError("");
+                )}
+                {selection.item.actions.map((action) => (
+                  <p key={action.id}>
+                    Action {action.id} : {action.status}{" "}
+                    {action.mode === "simulated"
+                      ? "(simulée, aucun achat réel)"
+                      : ""}
+                  </p>
+                ))}
+              </>
+            )}
+            {selection.kind === "memory" && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (draft.trim())
+                    void mutate((api) =>
+                      api.request(
+                        objectPath("memories", selection.item.id),
+                        "PATCH",
+                        { text: draft.trim() },
+                        selection.item.rev,
+                      ),
+                    );
                 }}
-                placeholder="Prépare un dîner simple pour samedi…"
-                maxLength={240}
-                rows={4}
-                aria-describedby={formError ? "form-error" : "request-help"}
-                autoFocus
-              />
-              <div className="input-help" id="request-help">
-                <span>Aucun service externe ne sera sollicité.</span>
-                <span>{newTitle.length}/240</span>
-              </div>
-              {formError && (
-                <p className="form-error" role="alert" id="form-error">
-                  {formError}
-                </p>
-              )}
-              <button className="primary-button wide" type="submit">
-                Confier cette demande
-                <ArrowRightIcon size={18} />
-              </button>
-            </form>
-          )}
-          {modal.type === "briefing" && (
-            <>
-              <div className="briefing-visual">
-                <WaveformIcon size={48} weight="light" />
-              </div>
-              <p className="dialog-lead">Votre journée, en quelques mots.</p>
-              <p>
-                Dans ce scénario, vous avez un rendez-vous à 11 h,{" "}
-                {activeTasks.length} demande{activeTasks.length > 1 ? "s" : ""}{" "}
-                à suivre et un dîner prévu à quatre ce soir.
-              </p>
-              {awaitingApproval && (
-                <div className="inline-note">
-                  <ShoppingBagIcon size={22} />
-                  Le panier de courses attend votre accord.
-                </div>
-              )}
-              <div className="voice-disclosure">
-                <MicrophoneIcon size={18} />
+              >
                 <p>
-                  La voix n’est pas encore connectée. Aucun microphone n’est
-                  activé. Vous pouvez découvrir le parcours par écrit.
+                  Source : {selection.item.source?.kind} ·{" "}
+                  {selection.item.visibility === "private"
+                    ? "Personnel"
+                    : "Foyer"}
                 </p>
-              </div>
-              <button
-                className="primary-button wide"
-                onClick={() =>
-                  open({ type: awaitingApproval ? "approval" : "new" })
-                }
-              >
-                {awaitingApproval
-                  ? "Vérifier mon panier"
-                  : "Confier une demande"}
-                <ArrowRightIcon size={18} />
-              </button>
-            </>
-          )}
-          {modal.type === "approval" && (
-            <>
-              <p>
-                Livraison proposée aujourd’hui entre 16 h et 17 h. Panier fictif
-                du commerce de démonstration.
-              </p>
-              <ul className="basket">
-                {[
-                  ["Fruits et légumes", "5 articles", "16,40 €"],
-                  ["Produits frais", "4 articles", "18,90 €"],
-                  ["Épicerie", "3 articles", "9,50 €"],
-                  ["Livraison", "Créneau proposé", "3,00 €"],
-                ].map(([name, quantity, price]) => (
-                  <li key={name}>
-                    <span>
-                      <strong>{name}</strong>
-                      <small>{quantity}</small>
-                    </span>
-                    <strong>{price}</strong>
-                  </li>
-                ))}
-              </ul>
-              <div className="basket-total">
-                <span>Total, livraison comprise</span>
-                <strong>47,80 €</strong>
-              </div>
-              <div className="inline-note">
-                <ShieldCheckIcon size={20} />
-                <span>
-                  Votre accord est simulé. Aucun paiement ni commande réelle.
-                </span>
-              </div>
-              <button
-                className="primary-button wide"
-                onClick={() => decideApproval("approved")}
-              >
-                <CheckIcon size={19} />
-                Approuver dans la démo
-              </button>
-              <button
-                className="text-button centered"
-                onClick={() => decideApproval("declined")}
-              >
-                Mettre le panier de côté
-              </button>
-            </>
-          )}
-          {modal.type === "task" && selectedTask && (
-            <>
-              <span className={`badge ${selectedTask.status}`}>
-                {statusLabels[selectedTask.status]}
-              </span>
-              <p>{selectedTask.description}</p>
-              <ol className="task-steps">
-                {selectedTask.steps.map((step, index) => (
-                  <li
-                    key={step}
-                    className={
-                      index < selectedTask.completed ? "completed" : ""
-                    }
-                  >
-                    <span>
-                      {index < selectedTask.completed ? (
-                        <CheckIcon size={15} />
-                      ) : (
-                        index + 1
-                      )}
-                    </span>
-                    {step}
-                  </li>
-                ))}
-              </ol>
-              {selectedTask.id === "groceries" && approval === "approved" && (
-                <div className="inline-note">
-                  Accord simulé reçu. La confirmation commerçant reste
-                  indisponible.
-                </div>
-              )}
-              {(selectedTask.status === "active" ||
-                selectedTask.status === "paused") && (
-                <div className="dialog-actions">
-                  <button
-                    className="light-button"
-                    onClick={() =>
-                      changeTask(
-                        selectedTask,
-                        selectedTask.status === "paused" ? "active" : "paused",
-                      )
-                    }
-                  >
-                    {selectedTask.status === "paused" ? (
-                      <PlayIcon size={18} />
-                    ) : (
-                      <PauseIcon size={18} />
-                    )}
-                    {selectedTask.status === "paused"
-                      ? "Reprendre"
-                      : "Mettre en pause"}
-                  </button>
+                <label className="field-label" htmlFor="memory-text">
+                  Ce que vous souhaitez retenir
+                </label>
+                <textarea
+                  id="memory-text"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  maxLength={6000}
+                  required
+                  rows={4}
+                />
+                <button className="primary-button">
+                  Enregistrer la correction
+                </button>
+                {confirmDelete ? (
+                  <div>
+                    <p>Oublier ce souvenir dans le backend ?</p>
+                    <button
+                      type="button"
+                      className="light-button"
+                      onClick={() =>
+                        void mutate((api) =>
+                          api.request(
+                            objectPath("memories", selection.item.id),
+                            "DELETE",
+                            undefined,
+                            selection.item.rev,
+                          ),
+                        )
+                      }
+                    >
+                      Confirmer la suppression
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setConfirmDelete(false)}
+                    >
+                      Conserver
+                    </button>
+                  </div>
+                ) : (
                   <button
                     className="text-button danger"
-                    onClick={() => changeTask(selectedTask, "cancelled")}
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
                   >
-                    Annuler la demande
+                    Oublier ce souvenir
                   </button>
-                </div>
-              )}
-              <p className="panel-note">
-                Suivi de démonstration. Aucune opération auprès d’un
-                prestataire.
-              </p>
-            </>
-          )}
-          {modal.type === "memory" && selectedMemory && (
-            <form onSubmit={saveMemory}>
-              <p className="source-line">{selectedMemory.source}</p>
-              <label className="field-label" htmlFor="memory-text">
-                Ce que vous souhaitez retenir
-              </label>
-              <textarea
-                id="memory-text"
-                value={memoryText}
-                onChange={(e) => {
-                  setMemoryText(e.target.value);
-                  setFormError("");
-                }}
-                maxLength={400}
-                rows={4}
-                aria-describedby={formError ? "memory-error" : undefined}
-              />
-              {formError && (
-                <p className="form-error" id="memory-error" role="alert">
-                  {formError}
+                )}
+              </form>
+            )}
+            {selection.kind === "quote" && (
+              <>
+                <p>
+                  {selection.item.conditions.mode === "simulated"
+                    ? "Panier simulé : aucun achat réel."
+                    : "Panier fournisseur"}
                 </p>
-              )}
-              <p className="privacy-note">
-                <UsersIcon size={17} />
-                {selectedMemory.shared
-                  ? "Partagé avec le foyer fictif"
-                  : "Personnel, profil fictif d’Alex"}
-              </p>
-              <button className="primary-button wide" type="submit">
-                Enregistrer la correction
-                <CheckIcon size={18} />
-              </button>
-              {deleteMemory ? (
-                <div className="delete-confirm">
-                  <p>Oublier ce souvenir dans la démonstration ?</p>
-                  <button
-                    className="light-button"
-                    type="button"
-                    onClick={() => {
-                      setMemories((prev) =>
-                        prev.filter((m) => m.id !== selectedMemory.id),
-                      );
-                      log("Un souvenir a été supprimé", selectedMemory.title);
-                      close();
-                      setToast("Souvenir oublié dans la démonstration.");
-                    }}
-                  >
-                    Confirmer la suppression
-                  </button>
-                  <button
-                    className="text-button"
-                    type="button"
-                    onClick={() => setDeleteMemory(false)}
-                  >
-                    Conserver
-                  </button>
-                </div>
-              ) : (
+                <p>Opération : {selection.item.conditions.operation}</p>
+                <ul>
+                  {selection.item.conditions.lines.map((line) => (
+                    <li key={line.sku}>
+                      {line.sku} × {line.quantity}
+                    </li>
+                  ))}
+                </ul>
+                <strong>
+                  {new Intl.NumberFormat("fr-FR", {
+                    style: "currency",
+                    currency: selection.item.conditions.currency,
+                  }).format(selection.item.conditions.totalMinor / 100)}
+                </strong>
+                <p>
+                  Livraison : {dateTime(selection.item.conditions.deliveryAt)}
+                </p>
+                <p>Valable jusqu’au {dateTime(selection.item.expiresAt)}</p>
+                <QuoteApproval
+                  api={apiRef.current!}
+                  quote={selection.item}
+                  goal={selection.goal}
+                  stepId={selection.stepId}
+                  approve={mutate}
+                />
                 <button
-                  className="text-button danger centered"
-                  type="button"
-                  onClick={() => setDeleteMemory(true)}
+                  className="text-button"
+                  onClick={() => control("goals", selection.goal, "pause")}
                 >
-                  <TrashIcon size={16} />
-                  Oublier ce souvenir
+                  Mettre de côté
                 </button>
-              )}
-            </form>
-          )}
-          {modal.type === "household" && (
-            <>
-              <p>
-                Un foyer fictif pour explorer Koyori. Vous consultez l’espace
-                personnel d’Alex.
-              </p>
-              <div className="person-row">
-                <span className="avatar">A</span>
-                <div>
-                  <strong>Alex</strong>
-                  <small>Profil actif / administrateur fictif</small>
-                </div>
-                <CheckCircleIcon size={20} />
-              </div>
-              <div className="person-row">
-                <span className="avatar sam">S</span>
-                <div>
-                  <strong>Sam</strong>
-                  <small>Membre fictif du foyer</small>
-                </div>
-              </div>
-              <div className="inline-note">
-                <ShieldCheckIcon size={22} />
-                <span>
-                  L’authentification et le changement de membre ne sont pas
-                  connectés dans cette interface.
-                </span>
-              </div>
-            </>
-          )}
-          {modal.type === "service" && (
-            <>
-              <div className="briefing-visual">
-                <PlugsConnectedIcon size={42} weight="light" />
-              </div>
-              <p>
-                {modal.name === "Alexa"
-                  ? "L’accès vocal via Alexa est l’ambition de Koyori. Cette interface ne dispose pas encore d’une intégration Alexa ou d’un transport vocal connecté."
-                  : modal.name === "Google Calendar"
-                    ? "Le backend prévoit un connecteur Google Calendar. Cette interface utilise uniquement un agenda fictif ; aucun compte Google n’est connecté."
-                    : "Les paniers et les repas sont des scénarios de démonstration. Aucun commerçant réel, paiement ou service de livraison n’est connecté."}
-              </p>
-              <div className="inline-note">
-                <ShieldCheckIcon size={20} />
-                Aucune autorisation externe n’a été accordée.
-              </div>
-              <button className="light-button wide" onClick={close}>
-                J’ai compris
-              </button>
-            </>
-          )}
+              </>
+            )}
+          </fieldset>
         </Dialog>
       )}
     </div>
