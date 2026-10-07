@@ -417,3 +417,133 @@ test("approval binds a fresh identity proof and retries only the unresolved deci
   expect(decisionKeys).toHaveLength(2);
   expect(decisionKeys[0]).toBe(decisionKeys[1]);
 });
+
+test.describe("review regressions", () => {
+  test.use({ timezoneId: "America/Los_Angeles" });
+
+  test("server timestamps use the household timezone for activity and quote dates", async ({
+    page,
+  }) => {
+    await mockBackend(page, async (route, path) => {
+      if (path === "activity") {
+        await route.fulfill({
+          json: {
+            items: [
+              {
+                id: "winter-event",
+                type: "koyori.task.changed.v1",
+                aggregateId: "goal-a",
+                occurredAt: Date.parse("2026-01-07T23:30:00Z") / 1000,
+              },
+            ],
+          },
+        });
+        return true;
+      }
+      if (path === "goals") {
+        await route.fulfill({
+          json: {
+            items: [
+              {
+                ...initialGoal,
+                status: "WAITING_APPROVAL",
+                plan: {
+                  summary: "Panier à valider",
+                  steps: [{ stepId: "shop", capability: "commerce.groceries" }],
+                },
+                stepStates: {
+                  shop: { status: "WAITING_APPROVAL", quoteId: "quote-a" },
+                },
+              },
+            ],
+          },
+        });
+        return true;
+      }
+      if (path === "quotes/quote-a") {
+        await route.fulfill({
+          json: {
+            id: "quote-a",
+            rev: 1,
+            expiresAt: Date.parse("2026-07-07T23:45:00Z") / 1000,
+            conditions: {
+              mode: "simulated",
+              operation: "create",
+              totalMinor: 1050,
+              currency: "EUR",
+              deliveryAt: Date.parse("2026-07-07T23:30:00Z") / 1000,
+              lines: [{ sku: "bread", quantity: 2 }],
+            },
+          },
+        });
+        return true;
+      }
+      return false;
+    });
+    await login(page);
+    await expect(page.locator(".timeline time")).toHaveText(
+      "08/01/2026 00:30:00",
+    );
+    await page.getByRole("button", { name: /Préparer ma journée/ }).click();
+    await page.getByRole("button", { name: "Voir le panier" }).click();
+    await expect(page.getByRole("dialog")).toContainText(
+      "Livraison : 08/07/2026 01:30:00",
+    );
+    await expect(page.getByRole("dialog")).toContainText(
+      "Valable jusqu’au 08/07/2026 01:45:00",
+    );
+  });
+
+  test("Escape during a pending mutation keeps the dialog open and its eventual error recoverable", async ({
+    page,
+  }) => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let intercepted = false;
+    await mockBackend(page, async (route, path) => {
+      if (
+        path !== "goals" ||
+        route.request().method() !== "POST" ||
+        intercepted
+      )
+        return false;
+      intercepted = true;
+      await pending;
+      await route.abort("failed");
+      return true;
+    });
+    await login(page);
+    await page.getByRole("button", { name: "Confier une demande" }).click();
+    await page
+      .getByLabel("Votre demande")
+      .fill("Demande avec réponse différée");
+    await page.getByRole("button", { name: "Confier à Koyori" }).click();
+    await expect.poll(() => intercepted).toBe(true);
+    try {
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Confier à Koyori" }),
+      ).toBeDisabled();
+    } finally {
+      release();
+    }
+    await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+      "Connexion interrompue",
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Confier une demande" }),
+    ).toBeFocused();
+    await page.getByRole("button", { name: "Confier une demande" }).click();
+    await page.getByLabel("Votre demande").fill("Demande après récupération");
+    await page.getByRole("button", { name: "Confier à Koyori" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.getByText("Demande après récupération", { exact: true }),
+    ).toBeVisible();
+  });
+});

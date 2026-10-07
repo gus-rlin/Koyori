@@ -37,3 +37,10 @@ Les premières tentatives contre l’ancien environnement ont créé des fixture
 - Création de routines et connexion de nouveaux comptes restent des opérations API ; l’interface contrôle/affiche les objets existants. Activité actualisée par polling, sans AppSync. La mémoire se filtre dans les enregistrements chargés, sans écran de recherche lexicale d’archives.
 - Les résultats backend, Lambda, CDK et recettes de reprise historiques de `artifact-evidence.json` restent historiques. Son empreinte source est actualisée pour Compose/CI avec une section `webIntegrationVerification` séparée ; elle ne requalifie pas ces artefacts.
 - La CI frontend exécute les scénarios interceptés/audio et la démo. La recette Docker reste opt-in et est validée localement ; résultats GitHub à lire sur la PR, aucune fusion automatique.
+
+
+## Corrections de revue — 2026-10-07 (JRN-037)
+
+Les trois horodatages (activité, livraison, expiration) utilisent désormais le fuseau du foyer. L’annulation native du dialogue est empêchée afin que React conserve un dialogue actif pendant une mutation. Deux régressions, rejouées sur ordinateur et mobile, échouaient avant correction puis passent : navigateur Los Angeles/foyer Paris (hiver, été et changement de jour), Échap pendant une requête différée qui échoue, affichage de l’erreur et réouverture fonctionnelle après fermeture.
+
+`npm test --prefix apps/web -- --workers=2 connected interface` : **34 tests réussis, zéro échec/exclusion, 35,1 s**, contre le build TypeScript/Vite de production. Prettier, diff et empreinte source vérifiés. Python, Docker et PCM non répétés car inchangés ; les 38 tests de la qualification initiale ci-dessus ne sont pas présentés comme réexécutés pour ce correctif.

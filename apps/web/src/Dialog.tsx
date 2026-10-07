@@ -26,7 +26,11 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      onCancel={onClose}
+      onCancel={(event) => {
+        // React owns closure; the caller may keep the modal open during a mutation.
+        event.preventDefault();
+        onClose();
+      }}
       aria-labelledby="dialog-title"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();

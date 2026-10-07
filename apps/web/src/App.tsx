@@ -67,8 +67,8 @@ const currentPage = () =>
     "today") as Page;
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Opération indisponible.";
-const dateTime = (value: number) =>
-  new Date(value * 1000).toLocaleString("fr-FR");
+const dateTime = (value: number, timeZone: string) =>
+  new Date(value * 1000).toLocaleString("fr-FR", { timeZone });
 type Data = {
   goals: Goal[];
   memories: Memory[];
@@ -435,7 +435,11 @@ function Home({
         <ol className="timeline">
           {[...data.activity].reverse().map((item, index) => (
             <li key={item.id ?? `${item.sequence}-${index}`}>
-              <time>{item.occurredAt ? dateTime(item.occurredAt) : ""}</time>
+              <time>
+                {item.occurredAt
+                  ? dateTime(item.occurredAt, household.timeZone)
+                  : ""}
+              </time>
               <div>
                 <strong>{item.type}</strong>
                 <p>Référence : {item.aggregateId}</p>
@@ -1037,9 +1041,16 @@ function Home({
                   }).format(selection.item.conditions.totalMinor / 100)}
                 </strong>
                 <p>
-                  Livraison : {dateTime(selection.item.conditions.deliveryAt)}
+                  Livraison :{" "}
+                  {dateTime(
+                    selection.item.conditions.deliveryAt,
+                    household.timeZone,
+                  )}
                 </p>
-                <p>Valable jusqu’au {dateTime(selection.item.expiresAt)}</p>
+                <p>
+                  Valable jusqu’au{" "}
+                  {dateTime(selection.item.expiresAt, household.timeZone)}
+                </p>
                 <QuoteApproval
                   api={apiRef.current!}
                   quote={selection.item}
