@@ -9,10 +9,11 @@ from test_stage4_sessions import admission
 from koyori.agenda import _instant
 from koyori.calendar import READ_SCOPES
 from koyori.channel_tools import ChannelTools
-from koyori.domain import hkey
+from koyori.domain import hkey, row
 from koyori.errors import Problem
 from koyori.sessions import Sessions
 from koyori.stage2_contracts import CalendarAuthorize
+from koyori.store import put
 from koyori.voice import VoiceSession
 
 CALENDAR = "calendar@example.invalid"
@@ -426,3 +427,31 @@ def test_voice_playback_rechecks_a_proposal_not_a_task(agenda):
     decide(h, proposal, "reject")
     with pytest.raises(Problem, match="CONTEXT_CHANGED"):
         bridge.validate_result(proposal)
+
+
+def test_an_ended_proposal_is_neither_approved_nor_written(agenda):
+    h, service, agenda_service = agenda
+    connect(h)
+    pending, approved = propose(h, draft(h)), propose(h, draft(h))
+    assert decide(h, approved, "approve").status_code == 200
+    h.clock.advance(2 * 86400)
+    refused = decide(h, pending, "approve")
+    assert refused.status_code == 422 and refused.json()["code"] == "PROPOSAL_EXPIRED"
+    agenda_service.sweep()
+    saved = h.domain.store.get("Domain", (hkey(h.h), f"CALPROPOSAL#{approved['id']}"))
+    assert saved["status"] == "FAILED" and saved["error"] == "PROPOSAL_EXPIRED"
+    assert not service.google.inserts
+
+
+def test_reconnect_finds_the_previous_connection_beyond_the_first_page(agenda):
+    h, _, _ = agenda
+    first = connect(h)
+    ctx = h.domain.context("alex", h.h)
+    # Sixty lower-sorting rows push the first connection past the first page of fifty.
+    for i in range(60):
+        other = row(hkey(h.h), f"CONNECTION#{i:032x}", owner="sam", provider="google-calendar")
+        h.domain.store.transact([put("Domain", {**other, "active": True})])
+    assert len(h.client.app.state.calendar.accounts(ctx)) == 1
+    connect(h)
+    retired = h.domain.store.get("Domain", (hkey(h.h), f"CONNECTION#{first['id']}"))
+    assert retired["active"] is False

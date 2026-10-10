@@ -406,6 +406,23 @@ class Calendar(Service):
         )
         return {"id": cid, "rev": 1, "mode": "real", "provider": "google-calendar"}
 
+    def accounts(self, ctx):
+        """Every active Google connection of the person, across all household connection pages."""
+        found, after = [], None
+        while True:
+            rows, after = self.store.query(
+                "Domain", hkey(ctx.h), prefix="CONNECTION#", after=after, limit=50
+            )
+            found += [
+                c
+                for c in rows
+                if c["owner"] == ctx.actor
+                and c["provider"] == "google-calendar"
+                and active(c, self.domain.now())
+            ]
+            if not after:
+                return found
+
     def supersede(self, ctx, account):
         """Reconnecting an account replaces its connection instead of syncing it twice.
 
@@ -414,15 +431,9 @@ class Calendar(Service):
         """
         if account is None:
             return []
-        rows, _ = self.store.query("Domain", hkey(ctx.h), prefix="CONNECTION#", limit=50)
         writes = []
-        for old in rows:
-            if not (
-                old["active"]
-                and old["owner"] == ctx.actor
-                and old["provider"] == "google-calendar"
-                and old.get("account") == account
-            ):
+        for old in self.accounts(ctx):
+            if old.get("account") != account:
                 continue
             retired = revised(old, active=False, epoch=old["epoch"] + 1)
             secret_row = self.store.get("Connections", self.token_key(old))

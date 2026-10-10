@@ -27,19 +27,9 @@ class Agenda(Service):
         super().__init__(domain)
         self.calendar = calendar or Calendar(domain)
 
-    def connections(self, ctx):
-        rows, _ = self.store.query("Domain", hkey(ctx.h), prefix="CONNECTION#", limit=50)
-        return [
-            c
-            for c in rows
-            if c["owner"] == ctx.actor
-            and c["provider"] == "google-calendar"
-            and active(c, self.domain.now())
-        ]
-
     def writable(self, ctx, cid):
         if cid is None:
-            accounts = self.connections(ctx)
+            accounts = self.calendar.accounts(ctx)
             candidates = [c for c in accounts if "calendar.write" in c["capabilities"]] or accounts
             if len(candidates) != 1:
                 raise Problem(
@@ -50,7 +40,11 @@ class Agenda(Service):
         if not active(connection, self.domain.now()) and connection.get("account"):
             # Proposals made before a reconnect follow the account's new connection.
             connection = next(
-                (c for c in self.connections(ctx) if c.get("account") == connection["account"]),
+                (
+                    c
+                    for c in self.calendar.accounts(ctx)
+                    if c.get("account") == connection["account"]
+                ),
                 connection,
             )
         if not active(connection, self.domain.now()):
@@ -127,6 +121,8 @@ class Agenda(Service):
             updated = revised(item, status="REJECTED", decidedAt=now)
             writes = [put("Domain", updated, item)]
         else:
+            if item["endAt"] <= now:
+                raise Problem(422, "PROPOSAL_EXPIRED", "This event has already ended.")
             connection = self.target(ctx, item)
             updated = revised(item, status="APPROVED", decidedAt=now)
             writes = [
@@ -191,11 +187,14 @@ class Agenda(Service):
             raise Problem(409, "CALENDAR_NOT_WRITABLE", "Koyori can only add to calendars you own.")
         # Hex digits are valid base32hex, the alphabet Google requires for client ids.
         event_id = hashlib.sha256(item["id"].encode()).hexdigest()
-        created = self.calendar.google.event(
-            token, item["calendarId"], event_id
-        ) or self.calendar.google.insert(
-            token, item["calendarId"], self.provider_event(ctx, item, event_id)
-        )
+        created = self.calendar.google.event(token, item["calendarId"], event_id)
+        if not created:
+            # A write delayed by retries must not add an appointment that is already over.
+            if item["endAt"] <= self.domain.now():
+                raise Problem(422, "PROPOSAL_EXPIRED", "This event has already ended.")
+            created = self.calendar.google.insert(
+                token, item["calendarId"], self.provider_event(ctx, item, event_id)
+            )
         link = created.get("htmlLink")
         # The event exists at Google: record it even if the connection was revoked meanwhile.
         self.finish(
@@ -249,7 +248,7 @@ class Agenda(Service):
             raise Problem(422, "INVALID_WINDOW", "Agenda window is limited to 31 days.")
         zone = ZoneInfo(ctx.profile.get("timeZone", ctx.household["timeZone"]))
         items, synced, truncated = [], [], False
-        for connection in self.connections(ctx):
+        for connection in self.calendar.accounts(ctx):
             completed = {}
             for calendar_id in connection["calendarIds"]:
                 state = self.store.get(
