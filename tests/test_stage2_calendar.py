@@ -423,7 +423,8 @@ def test_oauth_is_single_use_scoped_and_credentials_are_encrypted(calendar):
     assert "private-access" not in dumped and "private-refresh" not in dumped
     assert state not in dumped
     assert service.get(h.domain.context("alex", h.h), connection["id"])["capabilities"] == [
-        "calendar.read"
+        "calendar.read",
+        "calendar.write",
     ]
 
 

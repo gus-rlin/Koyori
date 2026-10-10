@@ -3,6 +3,7 @@ export type Page =
   | "tasks"
   | "memory"
   | "routines"
+  | "agenda"
   | "services"
   | "activity"
   | "settings";

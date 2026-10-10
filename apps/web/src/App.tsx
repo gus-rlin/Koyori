@@ -20,6 +20,7 @@ import {
   ArrowRightIcon,
   SunIcon,
   MoonIcon,
+  CalendarDotsIcon,
 } from "@phosphor-icons/react";
 import {
   Api,
@@ -32,7 +33,17 @@ import {
   type Connection,
   type Activity,
   type Quote,
+  type AgendaEvent,
+  type CalendarProposal,
 } from "./api";
+import {
+  AgendaPage,
+  CalendarAccounts,
+  ConnectCalendar,
+  EventForm,
+  TodaySchedule,
+  isCalendar,
+} from "./Calendar";
 import { Dialog } from "./Dialog";
 import { Empty } from "./components";
 import { Voice } from "./voice";
@@ -44,6 +55,7 @@ const pages = [
   { id: "tasks", label: "Mes demandes", icon: SparkleIcon },
   { id: "memory", label: "Ma mémoire", icon: BookOpenIcon },
   { id: "routines", label: "Routines", icon: ArrowClockwiseIcon },
+  { id: "agenda", label: "Agenda", icon: CalendarDotsIcon },
   { id: "services", label: "Services", icon: PlugsConnectedIcon },
   { id: "activity", label: "Activité", icon: ListIcon },
   { id: "settings", label: "Réglages", icon: GearSixIcon },
@@ -75,6 +87,8 @@ type Data = {
   routines: Routine[];
   connections: Connection[];
   activity: Activity[];
+  proposals: CalendarProposal[];
+  agenda: AgendaEvent[];
 };
 const empty: Data = {
   goals: [],
@@ -82,12 +96,17 @@ const empty: Data = {
   routines: [],
   connections: [],
   activity: [],
+  proposals: [],
+  agenda: [],
 };
+const WEEK = 7 * 86400;
 type Selection =
   | { kind: "goal"; item: Goal }
   | { kind: "memory"; item: Memory }
   | { kind: "quote"; item: Quote; goal: Goal; stepId: string }
   | { kind: "new" }
+  | { kind: "event" }
+  | { kind: "calendar" }
   | null;
 
 export default function App() {
@@ -248,16 +267,36 @@ function Home({
     async (client: Api) => {
       const run = ++refreshRun.current;
       try {
-        const [goals, memories, routines, connections, activity] =
-          await Promise.all([
-            client.list<Goal>("goals"),
-            client.list<Memory>("memories"),
-            client.list<Routine>("routines"),
-            client.list<Connection>("connections"),
-            client.list<Activity>("activity"),
-          ]);
+        const now = Math.floor(Date.now() / 1000);
+        const [
+          goals,
+          memories,
+          routines,
+          connections,
+          activity,
+          proposals,
+          agenda,
+        ] = await Promise.all([
+          client.list<Goal>("goals"),
+          client.list<Memory>("memories"),
+          client.list<Routine>("routines"),
+          client.list<Connection>("connections"),
+          client.list<Activity>("activity"),
+          client.list<CalendarProposal>("calendar-proposals"),
+          client.request<{ items: AgendaEvent[] }>(
+            `agenda?from=${now}&to=${now + WEEK}`,
+          ),
+        ]);
         if (apiRef.current !== client || run !== refreshRun.current) return;
-        setData({ goals, memories, routines, connections, activity });
+        setData({
+          goals,
+          memories,
+          routines,
+          connections,
+          activity,
+          proposals,
+          agenda: agenda.items,
+        });
         setError("");
       } catch (error) {
         if (apiRef.current !== client || run !== refreshRun.current) return;
@@ -455,6 +494,9 @@ function Home({
       )}
     </>
   );
+  const others = data.connections.filter(
+    (item) => item.provider !== "google-calendar",
+  );
   const heading = pages.find((item) => item.id === page)!.label;
   return (
     <div className="app-shell connected">
@@ -585,6 +627,16 @@ function Home({
                   />
                 </div>
               </section>
+              <TodaySchedule
+                events={data.agenda}
+                connected={data.connections.some(isCalendar)}
+                timeZone={household.timeZone}
+                pending={
+                  data.proposals.filter((item) => item.status === "PENDING")
+                    .length
+                }
+                openAgenda={() => navigate("agenda")}
+              />
               <section className="requests-section">
                 <div className="section-heading">
                   <h2>Je m’en occupe</h2>
@@ -712,36 +764,52 @@ function Home({
               )}
             </div>
           )}
+          {page === "agenda" && (
+            <AgendaPage
+              events={data.agenda}
+              proposals={data.proposals}
+              connections={data.connections}
+              timeZone={household.timeZone}
+              mutate={mutate}
+              newEvent={() => open({ kind: "event" })}
+              connect={() => open({ kind: "calendar" })}
+            />
+          )}
           {page === "services" && (
             <>
-              <p>
-                Connexions enregistrées pour votre profil. L’état affiché ne
-                garantit pas la disponibilité du fournisseur.
-              </p>
-              <div className="connected-list">
-                {data.connections.map((item) => (
-                  <article className="connected-card" key={item.id}>
-                    <h2>{item.provider}</h2>
-                    <span className="badge">
-                      {item.mode === "simulated"
-                        ? "Simulé"
-                        : "Connexion réelle"}
-                    </span>
-                    <p>
-                      {item.active ? "Active" : "Révoquée"} {item.status}
-                    </p>
-                  </article>
-                ))}
-              </div>
-              {!data.connections.length && (
-                <Empty
-                  title="Aucun service connecté"
-                  text="Configurez les connecteurs dans votre environnement backend."
-                />
+              <CalendarAccounts
+                connections={data.connections}
+                mutate={mutate}
+                connect={() => open({ kind: "calendar" })}
+              />
+              {others.length > 0 && (
+                <section
+                  aria-label="Autres connexions"
+                  className="other-services"
+                >
+                  <p>
+                    Autres connexions enregistrées pour votre profil. L’état
+                    affiché ne garantit pas la disponibilité du fournisseur.
+                  </p>
+                  <div className="connected-list">
+                    {others.map((item) => (
+                      <article className="connected-card" key={item.id}>
+                        <h2>{item.provider}</h2>
+                        <span className="badge">
+                          {item.mode === "simulated"
+                            ? "Simulé"
+                            : "Connexion réelle"}
+                        </span>
+                        <p>
+                          {item.active ? "Active" : "Révoquée"} {item.status}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
               )}
               <p className="panel-note">
-                L’intégration Alexa native et la connexion de nouveaux comptes
-                ne sont pas disponibles dans cet écran.
+                L’intégration Alexa native n’est pas disponible dans cet écran.
               </p>
             </>
           )}
@@ -839,7 +907,11 @@ function Home({
                 ? "Corriger un souvenir"
                 : selection.kind === "quote"
                   ? "Vérifier le panier"
-                  : "Suivre la demande"
+                  : selection.kind === "event"
+                    ? "Nouvel événement"
+                    : selection.kind === "calendar"
+                      ? "Connecter Google Agenda"
+                      : "Suivre la demande"
           }
           onClose={() => {
             if (!busy) setSelection(null);
@@ -851,6 +923,22 @@ function Home({
             </p>
           )}
           <fieldset disabled={busy} className="connected-fieldset">
+            {selection.kind === "event" && (
+              <EventForm
+                connections={data.connections}
+                timeZone={household.timeZone}
+                mutate={mutate}
+              />
+            )}
+            {selection.kind === "calendar" && (
+              <ConnectCalendar
+                api={apiRef.current!}
+                connected={() => {
+                  setSelection(null);
+                  if (apiRef.current) void refresh(apiRef.current);
+                }}
+              />
+            )}
             {selection.kind === "new" && (
               <form
                 onSubmit={(event) => {
