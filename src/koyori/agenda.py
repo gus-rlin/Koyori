@@ -73,10 +73,12 @@ class Agenda(Service):
 
     def propose(self, ctx, body, origin):
         connection = self.writable(ctx, body["connectionId"])
-        calendar_id = (
-            body["calendarId"] or connection.get("account") or connection["calendarIds"][0]
+        selected = connection["calendarIds"]
+        # Default to the account's own calendar when it is selected, else the first selected one.
+        calendar_id = body["calendarId"] or (
+            connection.get("account") if connection.get("account") in selected else selected[0]
         )
-        if calendar_id not in connection["calendarIds"]:
+        if calendar_id not in selected:
             raise Problem(422, "CALENDAR_NOT_SELECTED", "Calendar is not part of this connection.")
         now = self.domain.now()
         if body["endAt"] <= now or body["startAt"] > now + HORIZON:

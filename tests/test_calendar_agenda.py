@@ -455,3 +455,9 @@ def test_reconnect_finds_the_previous_connection_beyond_the_first_page(agenda):
     connect(h)
     retired = h.domain.store.get("Domain", (hkey(h.h), f"CONNECTION#{first['id']}"))
     assert retired["active"] is False
+
+
+def test_without_a_calendar_a_proposal_uses_a_selected_one(agenda):
+    h, _, _ = agenda
+    connect(h, ("shared@example.invalid",))
+    assert propose(h, draft(h))["calendarId"] == "shared@example.invalid"
