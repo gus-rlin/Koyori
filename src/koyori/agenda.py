@@ -47,7 +47,9 @@ class Agenda(Service):
                 ),
                 connection,
             )
-        if not active(connection, self.domain.now()):
+        if not active(connection, self.domain.now()) or connection["memberEpoch"] != ctx.member.get(
+            "accessEpoch", 1
+        ):
             raise Problem(409, "CONNECTION_REVOKED", "Connection is unavailable.")
         if "calendar.write" not in connection["capabilities"]:
             raise Problem(

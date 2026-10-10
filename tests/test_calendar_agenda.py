@@ -13,7 +13,7 @@ from koyori.domain import hkey, row
 from koyori.errors import Problem
 from koyori.sessions import Sessions
 from koyori.stage2_contracts import CalendarAuthorize
-from koyori.store import put
+from koyori.store import put, revised
 from koyori.voice import VoiceSession
 
 CALENDAR = "calendar@example.invalid"
@@ -461,3 +461,33 @@ def test_without_a_calendar_a_proposal_uses_a_selected_one(agenda):
     h, _, _ = agenda
     connect(h, ("shared@example.invalid",))
     assert propose(h, draft(h))["calendarId"] == "shared@example.invalid"
+
+
+def test_a_connection_from_a_previous_membership_is_not_used(agenda):
+    h, service, _ = agenda
+    connection = connect(h)
+    now = h.clock()
+    service.google.pages = [
+        {
+            "items": [
+                {
+                    "id": "standup",
+                    "summary": "Point du matin",
+                    "start": {"dateTime": datetime.fromtimestamp(now + 600, UTC).isoformat()},
+                    "end": {"dateTime": datetime.fromtimestamp(now + 1200, UTC).isoformat()},
+                }
+            ],
+            "nextSyncToken": "sync-1",
+        }
+    ]
+    service.sync(h.domain.context("alex", h.h), connection["id"])
+    member = h.domain.store.get("Domain", (hkey(h.h), "MEMBER#alex"))
+    readded = revised(member, accessEpoch=member.get("accessEpoch", 1) + 1)
+    h.domain.store.transact([put("Domain", readded, member)])
+    agenda_items = h.client.get(
+        "/v1/agenda", params={"from": now, "to": now + 86400}, headers=h.headers()
+    ).json()["items"]
+    assert agenda_items == []
+    for body in (draft(h), draft(h, connectionId=connection["id"])):
+        response = h.client.post("/v1/calendar-proposals", json=body, headers=h.headers())
+        assert response.status_code == 409, response.text

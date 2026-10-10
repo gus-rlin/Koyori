@@ -419,6 +419,8 @@ class Calendar(Service):
                 if c["owner"] == ctx.actor
                 and c["provider"] == "google-calendar"
                 and active(c, self.domain.now())
+                # A re-added member does not inherit connections from a revoked membership.
+                and c["memberEpoch"] == ctx.member.get("accessEpoch", 1)
             ]
             if not after:
                 return found
