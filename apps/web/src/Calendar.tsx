@@ -45,7 +45,11 @@ export const isCalendar = (item: Connection) =>
 const canWrite = (item: Connection) =>
   isCalendar(item) && !!item.capabilities?.includes("calendar.write");
 
-/** Seconds since epoch for a wall-clock date and time in an IANA zone. */
+/**
+ * Seconds since epoch for a wall-clock date and time in an IANA zone, or null when a
+ * daylight-saving gap skips that time. A repeated time takes its first occurrence,
+ * like the routine scheduler.
+ */
 function zonedEpoch(day: string, time: string, timeZone: string) {
   const [y, m, d] = day.split("-").map(Number);
   const [hh, mm] = time.split(":").map(Number);
@@ -74,9 +78,14 @@ function zonedEpoch(day: string, time: string, timeZone: string) {
       ) - at
     );
   };
-  // Second pass settles instants near a daylight-saving change.
-  const first = wall - offset(wall);
-  return Math.round((wall - offset(first)) / 1000);
+  // The offsets a day either side bound any change; keep instants that read back as `wall`.
+  const instants = [
+    wall - offset(wall - 86400000),
+    wall - offset(wall + 86400000),
+  ]
+    .filter((at) => at + offset(at) === wall)
+    .sort((a, b) => a - b);
+  return instants.length ? instants[0] / 1000 : null;
 }
 
 const clock = (seconds: number, timeZone: string) =>
@@ -372,6 +381,10 @@ export function EventForm({
     event.preventDefault();
     const startAt = zonedEpoch(form.day, form.start, timeZone);
     const endAt = zonedEpoch(form.day, form.end, timeZone);
+    if (startAt === null || endAt === null) {
+      setInvalid("Cette heure n’existe pas ce jour-là (changement d’heure).");
+      return;
+    }
     if (endAt <= startAt) {
       setInvalid("L’heure de fin doit suivre l’heure de début.");
       return;

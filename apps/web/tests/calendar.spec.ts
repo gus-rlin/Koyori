@@ -227,6 +227,35 @@ test.describe("Google Agenda", () => {
     });
   });
 
+  test("a time skipped by the spring change is refused and a repeated one takes its first occurrence", async ({
+    page,
+  }) => {
+    const sent = await mockCalendar(page);
+    await login(page);
+    await navigate(page, "agenda");
+    await page.getByRole("button", { name: "Nouvel événement" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Titre").fill("Garde");
+    await dialog.getByLabel("Date").fill("2027-03-28");
+    await dialog.getByLabel("Début").fill("02:30");
+    await dialog.getByLabel("Fin").fill("04:00");
+    const add = dialog.getByRole("button", { name: "Ajouter à Google Agenda" });
+    await add.click();
+    await expect(dialog.getByRole("alert")).toContainText("n’existe pas");
+    expect(sent.filter((s) => s.path === "calendar-proposals")).toHaveLength(0);
+    // 25 October 2026: 02:30 happens twice in Paris; the first is still UTC+2.
+    await dialog.getByLabel("Date").fill("2026-10-25");
+    await dialog.getByLabel("Fin").fill("03:30");
+    await add.click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(
+      sent.find((s) => s.path === "calendar-proposals")?.body,
+    ).toMatchObject({
+      startAt: Date.UTC(2026, 9, 25, 0, 30) / 1000,
+      endAt: Date.UTC(2026, 9, 25, 2, 30) / 1000,
+    });
+  });
+
   test("retrying after a lost approval approves the same proposal", async ({
     page,
   }) => {

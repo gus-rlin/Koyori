@@ -553,6 +553,7 @@ def test_google_http_contract_does_not_follow_redirect_or_expose_provider_errors
         if request.url.path.endswith("/events"):
             assert request.headers["authorization"] == "Bearer private-access"
             assert request.url.params["syncToken"] == "old"
+            assert request.url.params["singleEvents"] == "true"
             return httpx.Response(200, json={"items": [], "nextSyncToken": "new"})
         return httpx.Response(
             302, headers={"location": "https://attacker.invalid"}, text="private-access"

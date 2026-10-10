@@ -226,7 +226,8 @@ class Google:
         raise Problem(502, "CALENDAR_LIMIT", "Calendar inventory exceeds the supported bound.")
 
     def events(self, token, calendar, *, sync=None, page=None):
-        params = {"maxResults": 50, "showDeleted": "true"}
+        # Recurring series are expanded so each occurrence carries its own start and end.
+        params = {"maxResults": 50, "showDeleted": "true", "singleEvents": "true"}
         if sync:
             params["syncToken"] = sync
         if page:
