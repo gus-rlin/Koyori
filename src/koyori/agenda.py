@@ -60,6 +60,13 @@ class Agenda(Service):
             )
         return connection
 
+    def target(self, ctx, item):
+        """The connection a decided proposal writes through, still selecting its calendar."""
+        connection = self.writable(ctx, item["connectionId"])
+        if item["calendarId"] not in connection["calendarIds"]:
+            raise Problem(422, "CALENDAR_NOT_SELECTED", "Calendar is not part of this connection.")
+        return connection
+
     def proposal(self, h, pid):
         return self.store.get("Domain", (hkey(h), f"CALPROPOSAL#{pid}"))
 
@@ -119,7 +126,7 @@ class Agenda(Service):
             updated = revised(item, status="REJECTED", decidedAt=now)
             writes = [put("Domain", updated, item)]
         else:
-            connection = self.writable(ctx, item["connectionId"])
+            connection = self.target(ctx, item)
             updated = revised(item, status="APPROVED", decidedAt=now)
             writes = [
                 guard("Domain", connection),
@@ -174,7 +181,7 @@ class Agenda(Service):
             self.store.transact([put("Delivery", self.domain.done_intent(intent), intent)])
             return
         ctx = self.domain.context(item["owner"], intent["h"])
-        connection = self.writable(ctx, item["connectionId"])
+        connection = self.target(ctx, item)
         token = self.calendar.access_token(ctx, connection)
         owned = {
             c["id"] for c in self.calendar.google.calendars(token) if c.get("accessRole") == "owner"

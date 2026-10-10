@@ -38,6 +38,7 @@ const failures: Record<string, string> = {
     "L’accès Google a été retiré. Reconnectez votre agenda.",
   CALENDAR_READ_ONLY: "Ce compte est connecté en lecture seule.",
   CONNECTION_REVOKED: "Ce compte n’est plus connecté.",
+  CALENDAR_NOT_SELECTED: "Cet agenda ne fait plus partie du compte connecté.",
 };
 
 export const isCalendar = (item: Connection) =>

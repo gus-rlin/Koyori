@@ -326,3 +326,18 @@ def test_proposals_follow_a_reconnected_account(agenda):
         saved = h.domain.store.get("Domain", (hkey(h.h), f"CALPROPOSAL#{proposal['id']}"))
         assert saved["status"] == "CREATED" and saved["connectionId"] == new["id"] != old["id"]
     assert len(service.google.inserts) == 2
+
+
+def test_a_followed_proposal_still_needs_its_calendar_selected(agenda):
+    h, service, agenda_service = agenda
+    connect(h, ("primary", "shared@example.invalid"))
+    approved = propose(h, draft(h, calendarId="shared@example.invalid"))
+    assert decide(h, approved, "approve").status_code == 200
+    waiting = propose(h, draft(h, calendarId="shared@example.invalid"))
+    connect(h)
+    refused = decide(h, waiting, "approve")
+    assert refused.status_code == 422 and refused.json()["code"] == "CALENDAR_NOT_SELECTED"
+    agenda_service.sweep()
+    saved = h.domain.store.get("Domain", (hkey(h.h), f"CALPROPOSAL#{approved['id']}"))
+    assert saved["status"] == "FAILED" and saved["error"] == "CALENDAR_NOT_SELECTED"
+    assert not service.google.inserts
