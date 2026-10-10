@@ -200,3 +200,27 @@ export class Api {
 }
 export const objectPath = (resource: string, id: string) =>
   `${resource}/${encodeURIComponent(id)}`;
+
+/** Same canonical form as the server: sorted keys, compact separators. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.keys(value)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+/** A step-up proof is bound to this exact normalized request, never to client-supplied authority. */
+export async function stepUpHash(body: unknown) {
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical({ body, version: null })),
+  );
+  return Array.from(new Uint8Array(bytes), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+}

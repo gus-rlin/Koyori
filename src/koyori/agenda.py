@@ -54,8 +54,11 @@ class Agenda(Service):
             )
         return connection
 
+    def proposal(self, h, pid):
+        return self.store.get("Domain", (hkey(h), f"CALPROPOSAL#{pid}"))
+
     def get(self, ctx, pid):
-        item = self.store.get("Domain", (hkey(ctx.h), f"CALPROPOSAL#{pid}"))
+        item = self.proposal(ctx.h, pid)
         if not item or ctx.profile["kind"] != "personal" or item["owner"] != ctx.actor:
             raise missing()
         return item
@@ -102,8 +105,7 @@ class Agenda(Service):
 
     def decide(self, ctx, pid, version, decision):
         item = self.get(ctx, pid)
-        if item["rev"] != version:
-            raise Problem(412, "REVISION_CONFLICT", "The resource revision has changed.")
+        self.domain.require_version(item, version)
         if item["status"] != "PENDING":
             raise Problem(409, "PROPOSAL_DECIDED", "This proposal was already decided.")
         now = self.domain.now()
@@ -144,7 +146,8 @@ class Agenda(Service):
                     self.retry(intent, exc.code)
                     continue
                 try:
-                    self.finish(intent, status="FAILED", error=exc.code)
+                    item = self.proposal(intent["h"], intent["proposalId"])
+                    self.finish(intent, item, status="FAILED", error=exc.code)
                 except Conflict:
                     continue  # The next sweep re-reads the proposal and decides again.
             except Exception:
@@ -160,7 +163,7 @@ class Agenda(Service):
         )
 
     def execute(self, intent):
-        item = self.store.get("Domain", (hkey(intent["h"]), f"CALPROPOSAL#{intent['proposalId']}"))
+        item = self.proposal(intent["h"], intent["proposalId"])
         if not item or item["status"] != "APPROVED":
             self.store.transact([put("Delivery", self.domain.done_intent(intent), intent)])
             return
@@ -183,6 +186,7 @@ class Agenda(Service):
         sync = self.store.get("Delivery", (f"CALRUN#{connection['id']}", "META"))
         self.finish(
             intent,
+            item,
             status="CREATED",
             eventId=event_id,
             link=link if isinstance(link, str) and link.startswith("https://") else None,
@@ -214,8 +218,7 @@ class Agenda(Service):
             event["description"] = item["notes"]
         return event
 
-    def finish(self, intent, *, status, extra=(), **values):
-        item = self.store.get("Domain", (hkey(intent["h"]), f"CALPROPOSAL#{intent['proposalId']}"))
+    def finish(self, intent, item, *, status, extra=(), **values):
         updated = revised(item, status=status, **values)
         # The outcome is recorded even if the owner lost access; the event only names them.
         owner = Context(item["owner"], {"id": intent["h"]}, {}, {})

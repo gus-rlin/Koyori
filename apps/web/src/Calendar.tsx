@@ -3,6 +3,7 @@ import { CalendarBlankIcon, GoogleLogoIcon } from "@phosphor-icons/react";
 import {
   Api,
   objectPath,
+  stepUpHash,
   type AgendaEvent,
   type CalendarProposal,
   type Connection,
@@ -10,6 +11,18 @@ import {
 import { Empty } from "./components";
 
 type Mutate = (work: (api: Api) => Promise<unknown>) => Promise<void>;
+
+const decide = (
+  api: Api,
+  item: CalendarProposal,
+  decision: "approve" | "reject",
+) =>
+  api.request(
+    `${objectPath("calendar-proposals", item.id)}/decision`,
+    "POST",
+    { decision },
+    item.rev,
+  );
 
 const proposalStatus: Record<string, string> = {
   PENDING: "À confirmer",
@@ -29,11 +42,11 @@ const failures: Record<string, string> = {
 
 export const isCalendar = (item: Connection) =>
   item.provider === "google-calendar" && item.active;
-export const canWrite = (item: Connection) =>
+const canWrite = (item: Connection) =>
   isCalendar(item) && !!item.capabilities?.includes("calendar.write");
 
 /** Seconds since epoch for a wall-clock date and time in an IANA zone. */
-export function zonedEpoch(day: string, time: string, timeZone: string) {
+function zonedEpoch(day: string, time: string, timeZone: string) {
   const [y, m, d] = day.split("-").map(Number);
   const [hh, mm] = time.split(":").map(Number);
   const wall = Date.UTC(y, m - 1, d, hh, mm);
@@ -172,19 +185,12 @@ export function AgendaPage({
   connect: () => void;
 }) {
   const accounts = connections.filter(isCalendar);
-  const decide = (item: CalendarProposal, decision: "approve" | "reject") =>
-    void mutate((api) =>
-      api.request(
-        `${objectPath("calendar-proposals", item.id)}/decision`,
-        "POST",
-        { decision },
-        item.rev,
-      ),
-    );
+  const writable = accounts.some(canWrite);
   const days = new Map<string, AgendaEvent[]>();
   for (const event of events) {
     const key = dayKey(event.startAt, timeZone);
-    days.set(key, [...(days.get(key) ?? []), event]);
+    if (!days.has(key)) days.set(key, []);
+    days.get(key)!.push(event);
   }
   const waiting = proposals.filter((item) => item.status === "PENDING");
   const recent = proposals
@@ -211,11 +217,11 @@ export function AgendaPage({
         <button
           className="primary-button"
           onClick={newEvent}
-          disabled={!accounts.some(canWrite)}
+          disabled={!writable}
         >
           Nouvel événement
         </button>
-        {!accounts.some(canWrite) && (
+        {!writable && (
           <span className="panel-note">
             Reconnectez votre compte pour autoriser l’ajout d’événements.
           </span>
@@ -243,13 +249,17 @@ export function AgendaPage({
                 <div className="connected-actions">
                   <button
                     className="primary-button"
-                    onClick={() => decide(item, "approve")}
+                    onClick={() =>
+                      void mutate((api) => decide(api, item, "approve"))
+                    }
                   >
                     Ajouter à mon agenda
                   </button>
                   <button
                     className="text-button"
-                    onClick={() => decide(item, "reject")}
+                    onClick={() =>
+                      void mutate((api) => decide(api, item, "reject"))
+                    }
                   >
                     Refuser
                   </button>
@@ -362,12 +372,7 @@ export function EventForm({
         "POST",
         body,
       );
-      await api.request(
-        `${objectPath("calendar-proposals", proposal.id)}/decision`,
-        "POST",
-        { decision: "approve" },
-        proposal.rev,
-      );
+      await decide(api, proposal, "approve");
     });
   }
   return (
@@ -546,29 +551,6 @@ export function CalendarAccounts({
   );
 }
 
-/** Same canonical form as the server: sorted keys, compact separators. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object")
-    return `{${Object.keys(value)
-      .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`,
-      )
-      .join(",")}}`;
-  return JSON.stringify(value);
-}
-async function requestHash(body: unknown) {
-  const bytes = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(canonical({ body, version: null })),
-  );
-  return Array.from(new Uint8Array(bytes), (value) =>
-    value.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
 const AUTHORIZE = "connections/google-calendar/authorize";
 const AUTHORIZE_BODY = { calendarIds: ["primary"] };
 
@@ -598,7 +580,7 @@ export function ConnectCalendar({
       setChallenge(
         await api.request("auth/step-up", "POST", {
           operation: `POST /v1/${AUTHORIZE}`,
-          requestHash: await requestHash({
+          requestHash: await stepUpHash({
             ...AUTHORIZE_BODY,
             schemaVersion: "1.0",
           }),

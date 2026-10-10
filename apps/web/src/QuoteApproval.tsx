@@ -1,20 +1,6 @@
 import { useRef, useState } from "react";
-import { Api, objectPath, type Goal, type Quote } from "./api";
+import { Api, objectPath, stepUpHash, type Goal, type Quote } from "./api";
 
-/** Approval is bound to this exact normalized quote request, never to client-supplied authority. */
-export async function approvalHash(quoteId: string) {
-  const canonical = JSON.stringify({
-    body: { quoteId, schemaVersion: "1.0" },
-    version: null,
-  });
-  const bytes = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(canonical),
-  );
-  return Array.from(new Uint8Array(bytes), (value) =>
-    value.toString(16).padStart(2, "0"),
-  ).join("");
-}
 export function QuoteApproval({
   api,
   quote,
@@ -45,7 +31,10 @@ export function QuoteApproval({
       setChallenge(
         await api.request("auth/step-up", "POST", {
           operation: "POST /v1/approvals",
-          requestHash: await approvalHash(quote.id),
+          requestHash: await stepUpHash({
+            quoteId: quote.id,
+            schemaVersion: "1.0",
+          }),
         }),
       );
       setProof("");
