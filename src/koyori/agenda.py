@@ -320,11 +320,13 @@ def _instant(value, zone):
         if "dateTime" in value:
             moment = datetime.fromisoformat(value["dateTime"])
             if moment.tzinfo is None:
-                moment = moment.replace(tzinfo=UTC)
+                # Without an offset, Google names the event's zone separately.
+                named = value.get("timeZone")
+                moment = moment.replace(tzinfo=ZoneInfo(named) if named else UTC)
             return int(moment.timestamp()), False
         if "date" in value:
             day = date.fromisoformat(value["date"])
             return int(datetime.combine(day, time(), zone).timestamp()), True
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, KeyError):
         pass
     return None, False

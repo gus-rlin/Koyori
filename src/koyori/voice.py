@@ -9,7 +9,7 @@ import anyio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from koyori.channel_tools import ChannelTools
+from koyori.channel_tools import CONTRACTS, ChannelTools
 from koyori.domain import row
 from koyori.errors import Conflict, Problem
 from koyori.memory import Memory
@@ -128,7 +128,7 @@ class VoiceSession:
         if not isinstance(arguments, dict):
             raise Problem(422, "INVALID_TOOL_ARGUMENTS", "Tool arguments must be an object.")
         arguments = {**arguments}
-        if name.endswith("_goal"):
+        if "idempotencyKey" in CONTRACTS[name].model_fields:
             # Model-selected keys cannot create two operations for one tool occurrence.
             arguments["idempotencyKey"] = digest({"sid": self.sid, "tool": identifier})[:32]
         secret = self.sessions.grant(ctx, mode=session["mode"], session_id=self.sid)

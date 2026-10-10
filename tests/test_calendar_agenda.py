@@ -4,13 +4,16 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from test_stage2_calendar import FakeGoogle
 from test_stage2_calendar import calendar as calendar  # noqa: F401 - shared fixture
+from test_stage4_sessions import admission
 
+from koyori.agenda import _instant
 from koyori.calendar import READ_SCOPES
 from koyori.channel_tools import ChannelTools
 from koyori.domain import hkey
 from koyori.errors import Problem
 from koyori.sessions import Sessions
 from koyori.stage2_contracts import CalendarAuthorize
+from koyori.voice import VoiceSession
 
 CALENDAR = "calendar@example.invalid"
 
@@ -341,3 +344,22 @@ def test_a_followed_proposal_still_needs_its_calendar_selected(agenda):
     saved = h.domain.store.get("Domain", (hkey(h.h), f"CALPROPOSAL#{approved['id']}"))
     assert saved["status"] == "FAILED" and saved["error"] == "CALENDAR_NOT_SELECTED"
     assert not service.google.inserts
+
+
+def test_an_offsetless_time_uses_the_events_named_zone():
+    paris = {"dateTime": "2026-10-11T09:00:00", "timeZone": "Europe/Paris"}
+    assert _instant(paris, None) == (int(datetime(2026, 10, 11, 7, tzinfo=UTC).timestamp()), False)
+    assert _instant({**paris, "timeZone": "Nowhere/Invalid"}, None) == (None, False)
+
+
+def test_a_repeated_voice_proposal_is_created_once(agenda):
+    h, _, _ = agenda
+    connect(h)
+    sessions, grant = admission(h)
+    sessions.consume(grant["ticket"], grant["runtimeSessionId"])
+    bridge = VoiceSession(h.domain, grant["runtimeSessionId"], h.client.app.state.mcp.tools)
+    first, again = (
+        bridge.tool("call-1", "propose_calendar_event", {**draft(h), "idempotencyKey": key})
+        for key in ("a" * 32, "b" * 32)
+    )
+    assert first["id"] == again["id"]
