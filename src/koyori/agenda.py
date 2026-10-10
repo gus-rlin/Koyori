@@ -45,7 +45,13 @@ class Agenda(Service):
                     409, "CALENDAR_ACCOUNT_REQUIRED", "Choose the calendar account to write to."
                 )
             cid = candidates[0]["id"]
-        connection = self.calendar.get(ctx, cid)
+        connection = self.calendar.get(ctx, cid, inactive=True)
+        if not active(connection, self.domain.now()) and connection.get("account"):
+            # Proposals made before a reconnect follow the account's new connection.
+            connection = next(
+                (c for c in self.connections(ctx) if c.get("account") == connection["account"]),
+                connection,
+            )
         if not active(connection, self.domain.now()):
             raise Problem(409, "CONNECTION_REVOKED", "Connection is unavailable.")
         if "calendar.write" not in connection["capabilities"]:
@@ -188,6 +194,7 @@ class Agenda(Service):
             intent,
             item,
             status="CREATED",
+            connectionId=connection["id"],
             eventId=event_id,
             link=link if isinstance(link, str) and link.startswith("https://") else None,
             extra=[

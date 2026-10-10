@@ -345,6 +345,26 @@ test.describe("Google Agenda", () => {
     await expect(page.getByText("Lecture et ajout d’événements")).toBeVisible();
   });
 
+  test("a blocked popup leaves the identity proof unspent", async ({
+    page,
+  }) => {
+    const sent = await mockCalendar(page, { connected: false });
+    await page.addInitScript(() => {
+      window.open = () => null;
+    });
+    await login(page);
+    await navigate(page, "services");
+    await page.getByRole("button", { name: "Connecter Google Agenda" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Connecter Google Agenda",
+    });
+    await dialog.getByRole("button", { name: "Vérifier mon identité" }).click();
+    await dialog.getByLabel("Preuve d’identité récente").fill("id-token");
+    await dialog.getByRole("button", { name: "Continuer avec Google" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("pop-up");
+    expect(sent.map((s) => s.path)).toEqual(["auth/step-up"]);
+  });
+
   test("agenda screens are accessible in both themes and fit a narrow viewport", async ({
     page,
   }) => {

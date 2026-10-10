@@ -310,3 +310,19 @@ def test_reconnected_account_replaces_its_connection(agenda):
     assert [e["title"] for e in items] == ["Point du matin"]
     # One writable account is left, so a proposal need not name it.
     assert propose(h, draft(h))["connectionId"] == second["id"]
+
+
+def test_proposals_follow_a_reconnected_account(agenda):
+    h, service, agenda_service = agenda
+    old = connect(h)
+    approved = propose(h, draft(h))
+    assert decide(h, approved, "approve").status_code == 200
+    waiting = propose(h, draft(h, title="Kiné"))
+    new = connect(h)
+    response = decide(h, waiting, "approve")
+    assert response.status_code == 200, response.text
+    agenda_service.sweep()
+    for proposal in (approved, waiting):
+        saved = h.domain.store.get("Domain", (hkey(h.h), f"CALPROPOSAL#{proposal['id']}"))
+        assert saved["status"] == "CREATED" and saved["connectionId"] == new["id"] != old["id"]
+    assert len(service.google.inserts) == 2

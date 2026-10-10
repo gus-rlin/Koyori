@@ -641,6 +641,11 @@ export function ConnectCalendar({
       "koyori-google",
       "popup,width=520,height=720",
     );
+    // Checked before anything is sent: a blocked popup must not spend the identity proof.
+    if (!popup) {
+      setError("Autorisez les fenêtres pop-up pour continuer avec Google.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -658,10 +663,6 @@ export function ConnectCalendar({
       }>(AUTHORIZE, "POST", AUTHORIZE_BODY, undefined, grant.current);
       if (!authorizationUrl.startsWith("https://accounts.google.com/"))
         throw new Error("Adresse de consentement inattendue.");
-      if (!popup)
-        throw new Error(
-          "Autorisez les fenêtres pop-up pour continuer avec Google.",
-        );
       popup.location.href = authorizationUrl;
       setWaiting(true);
       watcher.current = setInterval(() => {
@@ -671,7 +672,7 @@ export function ConnectCalendar({
         connected();
       }, 800);
     } catch (error) {
-      popup?.close();
+      popup.close();
       setError(
         error instanceof Error ? error.message : "Connexion indisponible.",
       );
