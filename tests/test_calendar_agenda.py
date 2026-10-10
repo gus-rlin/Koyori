@@ -278,7 +278,7 @@ def test_consent_popup_gets_a_static_page_and_cancellation_is_explained(agenda):
     assert state not in page.text and page.headers["cache-control"] == "no-store"
 
 
-def test_reconnected_account_shows_each_event_once(agenda):
+def test_reconnected_account_replaces_its_connection(agenda):
     h, service, _ = agenda
     now = h.clock()
     page = {
@@ -292,11 +292,21 @@ def test_reconnected_account_shows_each_event_once(agenda):
         ],
         "nextSyncToken": "sync-1",
     }
+    connections = []
     for _ in range(2):
-        connection = connect(h)
+        connections.append(connect(h))
         service.google.pages = [page]
-        service.sync(h.domain.context("alex", h.h), connection["id"])
+        service.sync(h.domain.context("alex", h.h), connections[-1]["id"])
+    first, second = (
+        h.domain.store.get("Domain", (hkey(h.h), f"CONNECTION#{c['id']}")) for c in connections
+    )
+    assert first["active"] is False and second["active"] is True
+    # The previous grant is discarded, not revoked: Google may tie it to the new one.
+    assert h.domain.store.get("Connections", service.token_key(first))["envelope"] is None
+    assert service.google.revoked is False
     items = h.client.get(
         "/v1/agenda", params={"from": now, "to": now + 86400}, headers=h.headers()
     ).json()["items"]
     assert [e["title"] for e in items] == ["Point du matin"]
+    # One writable account is left, so a proposal need not name it.
+    assert propose(h, draft(h))["connectionId"] == second["id"]

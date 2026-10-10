@@ -35,7 +35,14 @@ async function mockCalendar(
   {
     connected = true,
     writable = true,
-  }: { connected?: boolean; writable?: boolean } = {},
+    truncated = false,
+    loseFirstDecision = false,
+  }: {
+    connected?: boolean;
+    writable?: boolean;
+    truncated?: boolean;
+    loseFirstDecision?: boolean;
+  } = {},
 ) {
   const sent: Sent[] = [];
   const state = {
@@ -90,6 +97,7 @@ async function mockCalendar(
               },
             ]
           : [],
+        truncated,
       });
     if (path === "calendar-proposals" && req.method() === "GET")
       return json({ items: state.proposals });
@@ -108,12 +116,23 @@ async function mockCalendar(
     const decision = path.match(/^calendar-proposals\/([^/]+)\/decision$/);
     if (decision) {
       const item = state.proposals.find((p) => p.id === decision[1])!;
+      const replay = sent.find(
+        (s, i) =>
+          i < sent.length - 1 &&
+          s.headers["idempotency-key"] === req.headers()["idempotency-key"],
+      );
+      if (replay) return json(item);
       expect(req.headers()["if-match"]).toBe(`"${item.rev}"`);
       Object.assign(item, {
         rev: item.rev + 1,
         status:
           req.postDataJSON().decision === "approve" ? "APPROVED" : "REJECTED",
       });
+      if (loseFirstDecision) {
+        // Applied by the server, but the response never reaches the browser.
+        loseFirstDecision = false;
+        return route.abort();
+      }
       return json(item);
     }
     if (path === "auth/step-up")
@@ -206,6 +225,41 @@ test.describe("Google Agenda", () => {
       path: "calendar-proposals/proposal-2/decision",
       body: { decision: "approve" },
     });
+  });
+
+  test("retrying after a lost approval approves the same proposal", async ({
+    page,
+  }) => {
+    const sent = await mockCalendar(page, { loseFirstDecision: true });
+    await login(page);
+    await navigate(page, "agenda");
+    await page.getByRole("button", { name: "Nouvel événement" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Titre").fill("Brunch");
+    const add = dialog.getByRole("button", { name: "Ajouter à Google Agenda" });
+    await add.click();
+    await expect(page.getByRole("alert").first()).toBeVisible();
+    await add.click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(sent.filter((s) => s.path === "calendar-proposals")).toHaveLength(1);
+    const decisions = sent.filter((s) => s.path.endsWith("/decision"));
+    expect(decisions.map((s) => s.path)).toEqual([
+      "calendar-proposals/proposal-2/decision",
+      "calendar-proposals/proposal-2/decision",
+    ]);
+    expect(decisions[1].headers["idempotency-key"]).toBe(
+      decisions[0].headers["idempotency-key"],
+    );
+  });
+
+  test("an incomplete agenda scan is announced, not shown as empty", async ({
+    page,
+  }) => {
+    await mockCalendar(page, { truncated: true });
+    await login(page);
+    await expect(page.getByText("Agenda incomplet").first()).toBeVisible();
+    await navigate(page, "agenda");
+    await expect(page.getByText("Agenda incomplet")).toBeVisible();
   });
 
   test("a read-only account cannot start an addition", async ({ page }) => {

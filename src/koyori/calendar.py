@@ -394,6 +394,7 @@ class Calendar(Service):
         completed = revised(processing, status="DONE", verifier=None)
         self.store.transact(
             ctx.guards()
+            + self.supersede(ctx, primary)
             + [
                 put("Domain", connection),
                 put("Connections", secret_row),
@@ -403,6 +404,33 @@ class Calendar(Service):
             ]
         )
         return {"id": cid, "rev": 1, "mode": "real", "provider": "google-calendar"}
+
+    def supersede(self, ctx, account):
+        """Reconnecting an account replaces its connection instead of syncing it twice.
+
+        The old credential is discarded, not revoked at Google: revoking it may withdraw
+        the grant the new connection has just received.
+        """
+        if account is None:
+            return []
+        rows, _ = self.store.query("Domain", hkey(ctx.h), prefix="CONNECTION#", limit=50)
+        writes = []
+        for old in rows:
+            if not (
+                old["active"]
+                and old["owner"] == ctx.actor
+                and old["provider"] == "google-calendar"
+                and old.get("account") == account
+            ):
+                continue
+            retired = revised(old, active=False, epoch=old["epoch"] + 1)
+            secret_row = self.store.get("Connections", self.token_key(old))
+            writes += [
+                put("Domain", retired, old),
+                put("Connections", revised(secret_row, envelope=None, leaseUntil=0), secret_row),
+                self.domain.event(ctx, old["id"], retired["rev"], kind="connection", mode="real"),
+            ]
+        return writes
 
     def intent(self, connection, old=None, due=None):
         due = self.domain.now() if due is None else due

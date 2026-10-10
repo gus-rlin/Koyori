@@ -235,7 +235,7 @@ class Agenda(Service):
         if not 0 < end - start <= 31 * 86400:
             raise Problem(422, "INVALID_WINDOW", "Agenda window is limited to 31 days.")
         zone = ZoneInfo(ctx.profile.get("timeZone", ctx.household["timeZone"]))
-        items, synced, seen, truncated = [], [], set(), False
+        items, synced, truncated = [], [], False
         for connection in self.connections(ctx):
             completed = {}
             for calendar_id in connection["calendarIds"]:
@@ -272,10 +272,6 @@ class Agenda(Service):
                         or not (begins < end and finishes > start)
                     ):
                         continue
-                    # A reconnected account may sync the same calendar under two connections.
-                    if (event["calendarId"], event["id"]) in seen:
-                        continue
-                    seen.add((event["calendarId"], event["id"]))
                     items.append(
                         {
                             "id": event["id"],

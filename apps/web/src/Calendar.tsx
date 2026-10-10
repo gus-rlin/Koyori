@@ -120,8 +120,10 @@ export function TodaySchedule({
   timeZone,
   pending,
   openAgenda,
+  truncated,
 }: {
   events: AgendaEvent[];
+  truncated: boolean;
   connected: boolean;
   timeZone: string;
   pending: number;
@@ -138,6 +140,12 @@ export function TodaySchedule({
         <h2>Dans votre journée</h2>
         <CalendarBlankIcon size={19} />
       </div>
+      {truncated && (
+        <p className="panel-note">
+          Agenda incomplet : tous les événements synchronisés n’ont pas pu être
+          parcourus.
+        </p>
+      )}
       {!connected ? (
         <p>Connectez Google Agenda pour retrouver vos rendez-vous ici.</p>
       ) : items.length ? (
@@ -175,8 +183,10 @@ export function AgendaPage({
   mutate,
   newEvent,
   connect,
+  truncated,
 }: {
   events: AgendaEvent[];
+  truncated: boolean;
   proposals: CalendarProposal[];
   connections: Connection[];
   timeZone: string;
@@ -271,6 +281,12 @@ export function AgendaPage({
       )}
       <section aria-label="Les sept prochains jours" className="week">
         <h2>Les sept prochains jours</h2>
+        {truncated && (
+          <p className="panel-note">
+            Agenda incomplet : tous les événements synchronisés n’ont pas pu
+            être parcourus.
+          </p>
+        )}
         {days.size ? (
           [...days.entries()].map(([key, items]) => (
             <div key={key} className="week-day">
@@ -345,6 +361,10 @@ export function EventForm({
     connectionId: accounts[0]?.id ?? "",
   });
   const [invalid, setInvalid] = useState("");
+  // After a lost approval response, retrying must approve the same proposal, not a new one.
+  const proposed = useRef<{ body: string; proposal: CalendarProposal }>(
+    undefined,
+  );
   const field =
     (name: keyof typeof form) => (event: { target: { value: string } }) =>
       setForm({ ...form, [name]: event.target.value });
@@ -367,12 +387,18 @@ export function EventForm({
     };
     // Filling in the form is the person's decision: propose, then confirm at once.
     void mutate(async (api) => {
-      const proposal = await api.request<CalendarProposal>(
-        "calendar-proposals",
-        "POST",
-        body,
-      );
-      await decide(api, proposal, "approve");
+      const signature = JSON.stringify(body);
+      if (proposed.current?.body !== signature)
+        proposed.current = {
+          body: signature,
+          proposal: await api.request<CalendarProposal>(
+            "calendar-proposals",
+            "POST",
+            body,
+          ),
+        };
+      await decide(api, proposed.current.proposal, "approve");
+      proposed.current = undefined;
     });
   }
   return (

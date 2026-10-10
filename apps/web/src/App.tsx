@@ -89,6 +89,7 @@ type Data = {
   activity: Activity[];
   proposals: CalendarProposal[];
   agenda: AgendaEvent[];
+  agendaTruncated: boolean;
 };
 const empty: Data = {
   goals: [],
@@ -98,6 +99,7 @@ const empty: Data = {
   activity: [],
   proposals: [],
   agenda: [],
+  agendaTruncated: false,
 };
 const WEEK = 7 * 86400;
 type Selection =
@@ -283,7 +285,7 @@ function Home({
           client.list<Connection>("connections"),
           client.list<Activity>("activity"),
           client.list<CalendarProposal>("calendar-proposals"),
-          client.request<{ items: AgendaEvent[] }>(
+          client.request<{ items: AgendaEvent[]; truncated: boolean }>(
             `agenda?from=${now}&to=${now + WEEK}`,
           ),
         ]);
@@ -296,6 +298,7 @@ function Home({
           activity,
           proposals,
           agenda: agenda.items,
+          agendaTruncated: agenda.truncated,
         });
         setError("");
       } catch (error) {
@@ -629,6 +632,7 @@ function Home({
               </section>
               <TodaySchedule
                 events={data.agenda}
+                truncated={data.agendaTruncated}
                 connected={data.connections.some(isCalendar)}
                 timeZone={household.timeZone}
                 pending={
@@ -767,6 +771,7 @@ function Home({
           {page === "agenda" && (
             <AgendaPage
               events={data.agenda}
+              truncated={data.agendaTruncated}
               proposals={data.proposals}
               connections={data.connections}
               timeZone={household.timeZone}
