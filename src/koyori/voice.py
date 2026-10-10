@@ -9,7 +9,7 @@ import anyio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from koyori.channel_tools import ChannelTools
+from koyori.channel_tools import CONTRACTS, ChannelTools
 from koyori.domain import row
 from koyori.errors import Conflict, Problem
 from koyori.memory import Memory
@@ -55,7 +55,13 @@ class VoiceSession:
     def validate_result(self, value):
         ctx, session = self.check()
         checks = self.tools.result_checks(ctx, value)
-        if value.get("id") and "status" in value:
+        if "calendarId" in value:
+            # A calendar proposal: its owner may have decided it before playback.
+            current = self.tools.agenda.get(ctx, value["id"])
+            if current["rev"] != value.get("rev"):
+                raise Problem(503, "CONTEXT_CHANGED", "Proposal changed before playback.", True)
+            checks.append(guard("Domain", current))
+        elif value.get("id") and "status" in value:
             current, authority = self.domain.task_access(ctx, value["id"])
             if current["rev"] != value.get("rev"):
                 raise Problem(503, "CONTEXT_CHANGED", "Task changed before playback.", True)
@@ -128,7 +134,7 @@ class VoiceSession:
         if not isinstance(arguments, dict):
             raise Problem(422, "INVALID_TOOL_ARGUMENTS", "Tool arguments must be an object.")
         arguments = {**arguments}
-        if name.endswith("_goal"):
+        if "idempotencyKey" in CONTRACTS[name].model_fields:
             # Model-selected keys cannot create two operations for one tool occurrence.
             arguments["idempotencyKey"] = digest({"sid": self.sid, "tool": identifier})[:32]
         secret = self.sessions.grant(ctx, mode=session["mode"], session_id=self.sid)

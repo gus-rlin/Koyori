@@ -1,5 +1,6 @@
 import threading
 import time
+from datetime import UTC, datetime
 
 import pytest
 from stage3_helpers import goals, submit, task
@@ -61,6 +62,7 @@ def test_finite_read_pass_respects_parallel_limit_and_retains_remaining_work(har
 
 def test_cancelled_routine_history_does_not_exhaust_admission_quota(harness):
     h = harness
+    h.clock.value = int(datetime(2026, 10, 7, 6, tzinfo=UTC).timestamp())
     service = Wakes(h.domain)
     body = RoutineWrite(
         text="Consulte ma journée", localTime="10:00", startsOn="2026-10-07", endsOn="2026-10-09"
@@ -104,6 +106,7 @@ def test_private_learning_activity_contains_only_minimal_envelopes(harness):
 
 def test_revoked_routine_owner_releases_quota_without_creating_an_occurrence(harness):
     h = harness
+    h.clock.value = int(datetime(2026, 10, 7, 6, tzinfo=UTC).timestamp())
     service = Wakes(h.domain)
     body = RoutineWrite(
         text="Consulte ma journée", localTime="10:00", startsOn="2026-10-07", endsOn="2026-10-09"

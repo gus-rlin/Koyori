@@ -1,6 +1,7 @@
 """Bounded stage-two roles, separate from synthetic workflow dispatch."""
 
 from koyori.actions import Actions
+from koyori.agenda import Agenda
 from koyori.calendar import Calendar
 from koyori.semantic import Semantic
 
@@ -13,7 +14,7 @@ def tick(domain, role):
         return lexical + Semantic(domain).sweep()
     actions = Actions(domain).sweep()
     calendars = Calendar(domain).sweep()
-    return actions + calendars
+    return actions + calendars + Agenda(domain).sweep()
 
 
 def connectors(event, context):

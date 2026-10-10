@@ -3,11 +3,13 @@
 from typing import Annotated
 
 from fastapi import Depends, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from koyori.actions import CAPABILITIES, Actions
+from koyori.agenda import Agenda
 from koyori.calendar import Calendar
 from koyori.domain import Context, projection
+from koyori.errors import Problem
 from koyori.memory import Memory
 from koyori.security import expected_version
 from koyori.semantic import Semantic
@@ -16,6 +18,8 @@ from koyori.stage2_contracts import (
     ApprovalCreate,
     BudgetPut,
     CalendarAuthorize,
+    CalendarDecision,
+    CalendarEventDraft,
     ContextQuery,
     MemoryPatch,
     MemorySearch,
@@ -40,6 +44,7 @@ def register(app, domain, actor, context):
         calendar,
         semantic,
     )
+    app.state.agenda = agenda = Agenda(domain, calendar)
     Ctx = Annotated[Context, Depends(context)]
 
     def mutation(service, request, ctx, body, work, *, version=None, authorize=None, protect=False):
@@ -194,10 +199,34 @@ def register(app, domain, actor, context):
 
     @app.get("/v1/oauth/google/callback")
     def google_callback(
+        request: Request,
         state: Annotated[str, Query(min_length=32, max_length=128)],
-        code: Annotated[str, Query(min_length=1, max_length=2048)],
+        code: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+        error: Annotated[str | None, Query(max_length=128)] = None,
     ):
-        return result(calendar.callback(state, code))
+        # The consent popup is a browser page; API clients keep the JSON contract.
+        page = "text/html" in request.headers.get("accept", "")
+        try:
+            if code is None:
+                raise Problem(400, "OAUTH_DENIED", "Google consent was not granted.")
+            connected = calendar.callback(state, code)
+        except Problem as exc:
+            if not page:
+                raise
+            return consent_page(
+                "Connexion non terminée",
+                "Annulée ou refusée. Fermez cette fenêtre et réessayez depuis Koyori."
+                if exc.code == "OAUTH_DENIED"
+                else "Google Agenda n’a pas pu être connecté. Fermez cette fenêtre et réessayez.",
+                exc.status,
+            )
+        if not page:
+            return result(connected)
+        return consent_page(
+            "Google Agenda connecté",
+            "Vous pouvez fermer cette fenêtre et revenir à Koyori.",
+            200,
+        )
 
     @app.post("/v1/webhooks/google-calendar", status_code=204)
     def google_webhook(request: Request):
@@ -236,6 +265,53 @@ def register(app, domain, actor, context):
         cid: str, ctx: Ctx, cursor: Annotated[str | None, Query(max_length=2048)] = None
     ):
         return calendar.events(ctx, cid, cursor)
+
+    @app.get("/v1/agenda")
+    def upcoming(
+        ctx: Ctx,
+        start: Annotated[int, Query(alias="from", gt=0)],
+        end: Annotated[int, Query(alias="to", gt=0)],
+    ):
+        domain.personal(ctx)
+        return agenda.upcoming(ctx, start, end)
+
+    @app.get("/v1/calendar-proposals")
+    def calendar_proposals(ctx: Ctx, cursor: Annotated[str | None, Query(max_length=2048)] = None):
+        domain.personal(ctx)
+        return domain.page(
+            ctx,
+            "Domain",
+            "CALPROPOSAL#",
+            "calendar-proposals",
+            cursor,
+            authorize=lambda item: agenda.get(ctx, item["id"]),
+        )
+
+    @app.post("/v1/calendar-proposals", status_code=201)
+    def propose_event(body: CalendarEventDraft, request: Request, ctx: Ctx):
+        normalized = body.model_dump()
+        saved = mutation(
+            agenda,
+            request,
+            ctx,
+            normalized,
+            lambda fresh: agenda.propose(fresh, normalized, "person"),
+        )
+        return result(saved, 201)
+
+    @app.post("/v1/calendar-proposals/{pid}/decision")
+    def decide_event(pid: str, body: CalendarDecision, request: Request, ctx: Ctx):
+        version = expected_version(request.headers.get("If-Match"))
+        saved = mutation(
+            agenda,
+            request,
+            ctx,
+            body.model_dump(),
+            lambda fresh: agenda.decide(fresh, pid, version, body.decision),
+            version=version,
+            authorize=lambda fresh: agenda.get(fresh, pid),
+        )
+        return result(saved)
 
     @app.get("/v1/budget")
     def budget(ctx: Ctx):
@@ -306,3 +382,16 @@ def register(app, domain, actor, context):
             cursor,
             authorize=lambda item: actions.get(ctx, "ACTION", item["id"]),
         )
+
+
+def consent_page(title, message, status):
+    """Static text only: nothing from the request or provider is echoed."""
+    return HTMLResponse(
+        f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>
+<style>body{{font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem;
+color:#1f2328;background:#fbfaf7}}@media(prefers-color-scheme:dark){{body{{color:#ece8e1;
+background:#191816}}}}</style></head><body><h1>{title}</h1><p>{message}</p></body></html>""",
+        status_code=status,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )

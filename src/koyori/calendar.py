@@ -1,4 +1,4 @@
-"""Google Calendar read-only OAuth, encrypted credentials and fenced incremental sync.
+"""Google Calendar OAuth, encrypted credentials, fenced incremental sync and event creation.
 
 Push messages are authenticated hints. Event state comes exclusively from a fresh
 Calendar API sync, so notification order/content never becomes provider evidence.
@@ -24,10 +24,13 @@ from koyori.security import digest
 from koyori.stage2 import Service
 from koyori.store import Change, guard, put, revised
 
-SCOPES = [
+READ_SCOPES = [
     "https://www.googleapis.com/auth/calendar.events.readonly",
     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ]
+# Narrowest write scope: events on calendars the account owns, never shared ones.
+WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events.owned"
+SCOPES = [*READ_SCOPES, WRITE_SCOPE]
 WATCH_TTL = 7200
 
 
@@ -133,7 +136,7 @@ class Google:
             "redirect_uri": self.settings.google_redirect_uri,
         }
 
-    def request(self, method, url, **kwargs):
+    def request(self, method, url, *, missing_ok=False, **kwargs):
         try:
             with self.client.stream(method, url, **kwargs) as response:
                 chunks, size = [], 0
@@ -168,6 +171,8 @@ class Google:
                         )
                 if not oauth and response.status_code in {401, 403}:
                     raise Problem(409, "PROVIDER_ACCESS_REVOKED", "Google access is unavailable.")
+                if missing_ok and response.status_code == 404:
+                    return None
                 if response.status_code == 410:
                     raise Problem(
                         409, "SYNC_TOKEN_EXPIRED", "Restart a full calendar synchronization."
@@ -221,7 +226,8 @@ class Google:
         raise Problem(502, "CALENDAR_LIMIT", "Calendar inventory exceeds the supported bound.")
 
     def events(self, token, calendar, *, sync=None, page=None):
-        params = {"maxResults": 50, "showDeleted": "true"}
+        # Recurring series are expanded so each occurrence carries its own start and end.
+        params = {"maxResults": 50, "showDeleted": "true", "singleEvents": "true"}
         if sync:
             params["syncToken"] = sync
         if page:
@@ -231,6 +237,24 @@ class Google:
             f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar, safe='')}/events",
             headers={"Authorization": f"Bearer {token}"},
             params=params,
+        )
+
+    def event(self, token, calendar, event_id):
+        return self.request(
+            "GET",
+            f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar, safe='')}"
+            f"/events/{quote(event_id, safe='')}",
+            headers={"Authorization": f"Bearer {token}"},
+            missing_ok=True,
+        )
+
+    def insert(self, token, calendar, event):
+        return self.request(
+            "POST",
+            f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar, safe='')}/events",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"sendUpdates": "none"},
+            json=event,
         )
 
     def watch(self, token, calendar, channel, secret, *, expires_at):
@@ -324,18 +348,23 @@ class Calendar(Service):
             self.envelope.open(item["verifier"], item["owner"], item["connectionId"])["verifier"],
         )
         scopes = set(credentials.get("scope", "").split())
-        if not set(SCOPES) <= scopes or not credentials.get("refresh_token"):
+        if not set(READ_SCOPES) <= scopes or not credentials.get("refresh_token"):
             raise Problem(
                 403,
                 "OAUTH_SCOPE_MISSING",
                 "Google did not grant the requested offline read access.",
             )
-        available = {
-            c["id"]
+        inventory = [
+            c
             for c in self.google.calendars(credentials["access_token"])
             if c.get("accessRole") in {"reader", "writer", "owner"} and not c.get("deleted")
-        }
-        if not set(item["calendarIds"]) <= available:
+        ]
+        primary = next((c["id"] for c in inventory if c.get("primary")), None)
+        # Calendars are chosen before consent, so "primary" names the account's own one.
+        selected = list(
+            dict.fromkeys(primary if c == "primary" else c for c in item["calendarIds"])
+        )
+        if None in selected or not set(selected) <= {c["id"] for c in inventory}:
             raise Problem(403, "CALENDAR_NOT_AUTHORIZED", "A selected calendar is unavailable.")
         ctx = self.domain.context(item["owner"], item["h"])
         if ctx.member.get("accessEpoch", 1) != item["memberEpoch"]:
@@ -351,8 +380,9 @@ class Calendar(Service):
             active=True,
             epoch=1,
             memberEpoch=ctx.member.get("accessEpoch", 1),
-            capabilities=["calendar.read"],
-            calendarIds=item["calendarIds"],
+            capabilities=["calendar.read"] + (["calendar.write"] if WRITE_SCOPE in scopes else []),
+            calendarIds=selected,
+            account=primary,
             createdAt=self.domain.now(),
             revokePending=False,
         )
@@ -365,6 +395,7 @@ class Calendar(Service):
         completed = revised(processing, status="DONE", verifier=None)
         self.store.transact(
             ctx.guards()
+            + self.supersede(ctx, primary)
             + [
                 put("Domain", connection),
                 put("Connections", secret_row),
@@ -374,6 +405,46 @@ class Calendar(Service):
             ]
         )
         return {"id": cid, "rev": 1, "mode": "real", "provider": "google-calendar"}
+
+    def accounts(self, ctx):
+        """Every active Google connection of the person, across all household connection pages."""
+        found, after = [], None
+        while True:
+            rows, after = self.store.query(
+                "Domain", hkey(ctx.h), prefix="CONNECTION#", after=after, limit=50
+            )
+            found += [
+                c
+                for c in rows
+                if c["owner"] == ctx.actor
+                and c["provider"] == "google-calendar"
+                and active(c, self.domain.now())
+                # A re-added member does not inherit connections from a revoked membership.
+                and c["memberEpoch"] == ctx.member.get("accessEpoch", 1)
+            ]
+            if not after:
+                return found
+
+    def supersede(self, ctx, account):
+        """Reconnecting an account replaces its connection instead of syncing it twice.
+
+        The old credential is discarded, not revoked at Google: revoking it may withdraw
+        the grant the new connection has just received.
+        """
+        if account is None:
+            return []
+        writes = []
+        for old in self.accounts(ctx):
+            if old.get("account") != account:
+                continue
+            retired = revised(old, active=False, epoch=old["epoch"] + 1)
+            secret_row = self.store.get("Connections", self.token_key(old))
+            writes += [
+                put("Domain", retired, old),
+                put("Connections", revised(secret_row, envelope=None, leaseUntil=0), secret_row),
+                self.domain.event(ctx, old["id"], retired["rev"], kind="connection", mode="real"),
+            ]
+        return writes
 
     def intent(self, connection, old=None, due=None):
         due = self.domain.now() if due is None else due

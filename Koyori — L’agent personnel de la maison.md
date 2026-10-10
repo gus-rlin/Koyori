@@ -371,6 +371,8 @@ Une première interface React/TypeScript/Vite est disponible dans [apps/web](app
 
 La voix navigateur utilise les tickets de l’étape 4 et le protocole PCM via Web Audio/AudioWorklet. En configuration simulée, aucun microphone n’est activé : des tours textuels de test traversent réellement le WebSocket et le domaine. En configuration vocale réelle, le code capture le microphone après consentement et lit le PCM serveur ; les tests automatiques utilisent un périphérique synthétique. Les microphones physiques, Nova/Polly, l’expérience conversationnelle et Alexa restent à qualifier. L’identité interactive Cognito/PKCE n’est pas livrée : le jeton d’accès et la preuve fraîche d’approbation sont fournis explicitement depuis l’émetteur. La création des comptes connectés et des routines reste côté API. Voir [le contrat d’interface](apps/web/README.md) et [les preuves du raccordement](docs/verification/web-backend.md).
 
+**Agenda connecté au 10 octobre 2026 (JRN-038)** : Google Agenda se connecte depuis l’interface et Koyori peut désormais ajouter des événements, uniquement sur les agendas possédés par la personne et seulement après sa confirmation explicite, y compris lorsque la proposition vient de l’assistant vocal ou MCP. L’accueil montre la journée réelle et la page Agenda les sept prochains jours. Ce circuit est validé avec un fournisseur Google factice ; aucun compte Google réel n’est encore qualifié. Microsoft 365 et les autres comptes restent hors périmètre.
+
 ## Repères documentaires
 
 *Sources primaires consultées le 4 octobre 2026. Les capacités citées proviennent des documentations des éditeurs. Les dialogues, l’architecture et les orientations de produit décrivent la proposition à construire.*

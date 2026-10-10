@@ -30,6 +30,28 @@ export type Connection = Versioned & {
   mode: string;
   active: boolean;
   status?: string;
+  capabilities?: string[];
+  account?: string | null;
+};
+export type AgendaEvent = {
+  id: string;
+  connectionId: string;
+  title: string;
+  startAt: number;
+  endAt: number;
+  allDay: boolean;
+};
+export type CalendarProposal = Versioned & {
+  title: string;
+  startAt: number;
+  endAt: number;
+  location?: string | null;
+  notes?: string | null;
+  origin: "person" | "assistant";
+  status: string;
+  createdAt: number;
+  link?: string | null;
+  error?: string | null;
 };
 export type Activity = {
   id?: string;
@@ -56,19 +78,33 @@ export type Admission = {
   simulation: boolean;
 };
 
+// Codes whose cause the person can act on, rather than a generic refusal.
+const explained: Record<string, string> = {
+  CALENDAR_UNAVAILABLE:
+    "Google Agenda n’est pas encore configuré sur ce serveur Koyori.",
+  CALENDAR_READ_ONLY:
+    "Ce compte Google est connecté en lecture seule. Reconnectez-le pour ajouter des événements.",
+  CALENDAR_ACCOUNT_REQUIRED:
+    "Choisissez l’agenda dans lequel ajouter l’événement.",
+  INVALID_EVENT_TIME:
+    "L’événement doit se terminer dans le futur, d’ici un an.",
+  PROPOSAL_DECIDED: "Cet ajout a déjà été traité.",
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     public code: string,
   ) {
     super(
-      status === 401
-        ? "Votre session a expiré. Reconnectez-vous."
-        : status === 403
-          ? "Vous n’avez pas accès à cette opération."
-          : status === 409 || status === 412
-            ? "Ces données ont changé. Actualisez avant de réessayer."
-            : `Le serveur a refusé la demande (${code}).`,
+      explained[code] ??
+        (status === 401
+          ? "Votre session a expiré. Reconnectez-vous."
+          : status === 403
+            ? "Vous n’avez pas accès à cette opération."
+            : status === 409 || status === 412
+              ? "Ces données ont changé. Actualisez avant de réessayer."
+              : `Le serveur a refusé la demande (${code}).`),
     );
   }
 }
@@ -164,3 +200,27 @@ export class Api {
 }
 export const objectPath = (resource: string, id: string) =>
   `${resource}/${encodeURIComponent(id)}`;
+
+/** Same canonical form as the server: sorted keys, compact separators. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.keys(value)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+/** A step-up proof is bound to this exact normalized request, never to client-supplied authority. */
+export async function stepUpHash(body: unknown) {
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical({ body, version: null })),
+  );
+  return Array.from(new Uint8Array(bytes), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+}

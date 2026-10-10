@@ -155,6 +155,26 @@ class CalendarAuthorize(Write):
         return value
 
 
+class CalendarEventDraft(Write):
+    connectionId: Identifier | None = None
+    calendarId: Annotated[str, Field(min_length=1, max_length=256)] | None = None
+    title: Annotated[str, Field(min_length=1, max_length=200)]
+    startAt: int = Field(gt=0)
+    endAt: int = Field(gt=0)
+    location: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    notes: Annotated[str, Field(min_length=1, max_length=1000)] | None = None
+
+    @model_validator(mode="after")
+    def duration(self):
+        if not 0 < self.endAt - self.startAt <= 14 * 86400:
+            raise ValueError("An event lasts between one second and fourteen days")
+        return self
+
+
+class CalendarDecision(Write):
+    decision: Literal["approve", "reject"]
+
+
 class SupplierNotice(Write):
     eventId: Identifier
     householdId: Identifier

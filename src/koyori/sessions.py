@@ -16,6 +16,7 @@ PERSONAL_TOOLS = READ_TOOLS | {
     "pause_goal",
     "resume_goal",
     "cancel_goal",
+    "propose_calendar_event",
 }
 
 

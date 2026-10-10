@@ -16,7 +16,7 @@ Contrat actualisé le 2026-10-06. La livraison comprend les implémentations loc
 | Infrastructure AWS | 1 | Code et synthèse réels, exécution distante non qualifiée | Cognito, DynamoDB, EventBridge, SQS, Lambda, HTTP API, alarmes, sauvegardes ; assertions du template |
 | Mémoire sourcée et contexte | 2 | Réel par HTTP/DynamoDB Local ; embeddings locaux simulés | Chronologie, clé, journées locales, correction/effacement, sources et droits actuels |
 | Recherche Titan/S3 Vectors | 2 | Adaptateurs et infrastructure préparés ; appels externes non qualifiés | 512 dimensions, filtres serveur, relecture canonique, plafond quotidien |
-| Google Calendar | 2 | OAuth/sync/push codés ; tests avec fournisseur fictif, compte réel non qualifié | Scopes read-only, sélection, chiffrement, refresh/révocation et sync paginé |
+| Google Calendar | 2, JRN-038 | OAuth/sync/push et ajout d'événements confirmé codés ; tests avec fournisseur fictif, compte réel non qualifié | Lecture + `calendar.events.owned`, sélection, chiffrement, refresh/révocation, sync paginé, propositions confirmées et écriture idempotente |
 | Commerce, approbations et budgets | 2 | Mécanismes réels ; fournisseur et commandes simulés | Devis exacts, montants entiers, réservation atomique, intention stable, rapprochement et reçus séparés |
 | Plans naturels et spécialistes | 3 | Réel par API ; planificateur de recette simulé ; Strands exécuté avec HTTP intercepté | DAG typé/versionné, comptes/dates/révisions validés, 2 lectures parallèles, prix/reçus des connecteurs |
 | Coordinateur Nova et quotas | 3 | Adaptateur réel préparé ; qualification distante `NOT_RUN` sans identifiants AWS | 1 réparation, 2 requêtes par proposition, 16 par objectif, 200 par personne/foyer/jour ; aucune autorité au modèle |

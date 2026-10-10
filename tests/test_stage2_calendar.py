@@ -423,7 +423,8 @@ def test_oauth_is_single_use_scoped_and_credentials_are_encrypted(calendar):
     assert "private-access" not in dumped and "private-refresh" not in dumped
     assert state not in dumped
     assert service.get(h.domain.context("alex", h.h), connection["id"])["capabilities"] == [
-        "calendar.read"
+        "calendar.read",
+        "calendar.write",
     ]
 
 
@@ -552,6 +553,7 @@ def test_google_http_contract_does_not_follow_redirect_or_expose_provider_errors
         if request.url.path.endswith("/events"):
             assert request.headers["authorization"] == "Bearer private-access"
             assert request.url.params["syncToken"] == "old"
+            assert request.url.params["singleEvents"] == "true"
             return httpx.Response(200, json={"items": [], "nextSyncToken": "new"})
         return httpx.Response(
             302, headers={"location": "https://attacker.invalid"}, text="private-access"

@@ -34,7 +34,7 @@ docker compose run --rm --no-deps demo python -m koyori.demo token alex
 
 Les commandes portent `Idempotency-Key` et, pour les objets existants, `If-Match`. Après coupure réseau, réessayer la même opération conserve sa clé. Après conflit de révision, fermer le dialogue, actualiser et examiner la nouvelle version. Les confirmations sont affichées après réponse serveur. Les listes sont paginées, puis actualisées toutes les dix secondes lorsque l’onglet est visible ; ce n’est pas un abonnement AppSync. Une session expirée efface l’espace privé et demande une reconnexion.
 
-Parcours : demandes (création, filtre, plan, pause/reprise/annulation), panier issu du devis serveur, souvenirs (recherche dans la liste chargée, correction et suppression confirmée), routines existantes (pause/reprise), services existants (lecture) et activité. Aucun agenda inventé. La création de routines et la connexion de nouveaux comptes ne sont pas proposées par ces écrans.
+Parcours : demandes (création, filtre, plan, pause/reprise/annulation), panier issu du devis serveur, souvenirs (recherche dans la liste chargée, correction et suppression confirmée), routines existantes (pause/reprise), services et activité. Google Agenda (JRN-038) : connexion depuis Services (preuve fraîche puis consentement Google dans une fenêtre, l'onglet gardant sa session en mémoire), synchronisation et déconnexion ; page Agenda avec les sept prochains jours, propositions de Koyori à confirmer ou refuser, ajout d'un événement saisi dans le fuseau du foyer ; panneau « Dans votre journée » sur l'accueil. Aucun agenda inventé. La création de routines et les autres comptes restent côté API.
 
 ### Approbation d’un panier
 

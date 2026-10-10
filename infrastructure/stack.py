@@ -200,6 +200,7 @@ class FoundationStack(cdk.Stack):
                         "koyori.action.changed.v1",
                         "koyori.connection.changed.v1",
                         "koyori.calendar.changed.v1",
+                        "koyori.proposal.changed.v1",
                     ],
                 ),
             )

@@ -47,6 +47,16 @@ CAPABILITIES = (
         "timeoutSeconds": 10,
         "retry": "bounded page fetch and sync-token reset",
     },
+    {
+        "id": "calendar.write",
+        "rev": 1,
+        "access": "write",
+        "provider": "google-calendar",
+        "mode": "real",
+        "proof": "owner decision, then provider event for a proposal-derived event id",
+        "timeoutSeconds": 10,
+        "retry": "look up the derived event id before inserting; never blind retry",
+    },
 )
 
 

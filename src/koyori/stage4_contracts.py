@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field
 
 from koyori.contracts import Write as Strict
+from koyori.stage2_contracts import CalendarEventDraft
 
 
 class SessionCreate(Strict):
@@ -54,6 +55,10 @@ class GoalControl(Strict):
 
 class GoalInput(Strict):
     text: str = Field(min_length=1, max_length=2000)
+    idempotencyKey: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
+class EventProposal(CalendarEventDraft):
     idempotencyKey: str = Field(pattern=r"^[a-f0-9]{32}$")
 
 
