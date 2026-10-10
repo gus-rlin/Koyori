@@ -232,7 +232,7 @@ class Agenda(Service):
         if not 0 < end - start <= 31 * 86400:
             raise Problem(422, "INVALID_WINDOW", "Agenda window is limited to 31 days.")
         zone = ZoneInfo(ctx.profile.get("timeZone", ctx.household["timeZone"]))
-        items, synced = [], []
+        items, synced, seen, truncated = [], [], set(), False
         for connection in self.connections(ctx):
             completed = {}
             for calendar_id in connection["calendarIds"]:
@@ -269,6 +269,10 @@ class Agenda(Service):
                         or not (begins < end and finishes > start)
                     ):
                         continue
+                    # A reconnected account may sync the same calendar under two connections.
+                    if (event["calendarId"], event["id"]) in seen:
+                        continue
+                    seen.add((event["calendarId"], event["id"]))
                     items.append(
                         {
                             "id": event["id"],
@@ -282,10 +286,13 @@ class Agenda(Service):
                     )
                 if not after:
                     break
+            else:
+                # Rows follow key order, not dates: an unscanned page may hold upcoming events.
+                truncated = True
         items.sort(key=lambda e: (e["startAt"], e["title"]))
         return {
             "items": items[:200],
-            "truncated": len(items) > 200,
+            "truncated": truncated or len(items) > 200,
             "syncedAt": min((s for s in synced if s), default=None),
             "mode": "real",
             "source": "google-calendar",

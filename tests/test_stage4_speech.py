@@ -30,6 +30,17 @@ def test_goal_waiting_approval_is_spoken_before_its_proposed_action(locale):
     assert result["status"] == "WAITING_APPROVAL" and result["sourceRevision"] == 3
 
 
+@pytest.mark.parametrize("locale", ["fr-FR", "en-US"])
+def test_calendar_proposal_is_announced_as_awaiting_confirmation(locale):
+    result = narration(
+        {"id": "p", "rev": 1, "origin": "assistant", "status": "PENDING", "title": "Dentiste"},
+        locale,
+    )
+    text = result["text"].lower()
+    assert ("confirmez" in text or "confirm" in text) and result["status"] == "PENDING"
+    assert "ajouté" not in text and "added" not in text
+
+
 def test_unknown_cancelled_goal_and_receipt_speech_are_distinct():
     unknown = narration({"id": "x", "status": "UNKNOWN", "receipt": None})
     assert "inconnu" in unknown["text"] and unknown["evidence"] == "canonical_state"

@@ -36,6 +36,17 @@ def narration(value, locale="fr-FR"):
             "sourceRevision": value.get("rev"),
             "status": "WAITING_APPROVAL",
         }
+    if value.get("origin") == "assistant" and value.get("status") == "PENDING":
+        # A proposal is never an addition: only the person's decision writes the event.
+        return {
+            "text": "J'ai préparé cet événement. Confirmez-le dans votre espace personnel pour l'ajouter à votre agenda."
+            if french
+            else "I prepared this event. Confirm it in your personal control surface to add it to your calendar.",
+            "evidence": "canonical_state",
+            "sourceId": value.get("id"),
+            "sourceRevision": value.get("rev"),
+            "status": "PENDING",
+        }
     actions = value.get("actions", [])
     action = actions[-1] if actions else value if "receipt" in value else None
     if action:

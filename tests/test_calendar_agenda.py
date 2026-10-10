@@ -276,3 +276,27 @@ def test_consent_popup_gets_a_static_page_and_cancellation_is_explained(agenda):
     )
     assert page.status_code == 200 and "Google Agenda connecté" in page.text
     assert state not in page.text and page.headers["cache-control"] == "no-store"
+
+
+def test_reconnected_account_shows_each_event_once(agenda):
+    h, service, _ = agenda
+    now = h.clock()
+    page = {
+        "items": [
+            {
+                "id": "standup",
+                "summary": "Point du matin",
+                "start": {"dateTime": datetime.fromtimestamp(now + 600, UTC).isoformat()},
+                "end": {"dateTime": datetime.fromtimestamp(now + 1200, UTC).isoformat()},
+            }
+        ],
+        "nextSyncToken": "sync-1",
+    }
+    for _ in range(2):
+        connection = connect(h)
+        service.google.pages = [page]
+        service.sync(h.domain.context("alex", h.h), connection["id"])
+    items = h.client.get(
+        "/v1/agenda", params={"from": now, "to": now + 86400}, headers=h.headers()
+    ).json()["items"]
+    assert [e["title"] for e in items] == ["Point du matin"]
