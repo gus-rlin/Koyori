@@ -363,3 +363,24 @@ def test_a_repeated_voice_proposal_is_created_once(agenda):
         for key in ("a" * 32, "b" * 32)
     )
     assert first["id"] == again["id"]
+
+
+def test_an_event_created_during_a_revocation_is_still_recorded(agenda):
+    h, service, agenda_service = agenda
+    connection = connect(h)
+    proposal = propose(h, draft(h))
+    decide(h, proposal, "approve")
+    insert = service.google.insert
+
+    def revoked_meanwhile(token, calendar, event):
+        created = insert(token, calendar, event)
+        response = h.client.delete(
+            f"/v1/connections/{connection['id']}", headers=h.headers(version=connection["rev"])
+        )
+        assert response.status_code == 200, response.text
+        return created
+
+    service.google.insert = revoked_meanwhile
+    agenda_service.sweep()
+    saved = h.domain.store.get("Domain", (hkey(h.h), f"CALPROPOSAL#{proposal['id']}"))
+    assert saved["status"] == "CREATED" and len(service.google.inserts) == 1

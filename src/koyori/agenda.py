@@ -8,6 +8,7 @@ lost response or a retried sweep finds the existing event instead of duplicating
 import hashlib
 import json
 import logging
+from contextlib import suppress
 from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
@@ -196,7 +197,7 @@ class Agenda(Service):
             token, item["calendarId"], self.provider_event(ctx, item, event_id)
         )
         link = created.get("htmlLink")
-        sync = self.store.get("Delivery", (f"CALRUN#{connection['id']}", "META"))
+        # The event exists at Google: record it even if the connection was revoked meanwhile.
         self.finish(
             intent,
             item,
@@ -204,12 +205,11 @@ class Agenda(Service):
             connectionId=connection["id"],
             eventId=event_id,
             link=link if isinstance(link, str) and link.startswith("https://") else None,
-            extra=[
-                guard("Domain", connection),
-                # Wake the connection sync so the agenda shows the new event promptly.
-                put("Delivery", self.calendar.intent(connection, sync), sync),
-            ],
         )
+        # Best effort: wake the sync so the agenda shows the event before the next poll.
+        sync = self.store.get("Delivery", (f"CALRUN#{connection['id']}", "META"))
+        with suppress(Conflict):
+            self.store.transact([put("Delivery", self.calendar.intent(connection, sync), sync)])
 
     def provider_event(self, ctx, item, event_id):
         zone = ctx.profile.get("timeZone", ctx.household["timeZone"])
@@ -232,13 +232,12 @@ class Agenda(Service):
             event["description"] = item["notes"]
         return event
 
-    def finish(self, intent, item, *, status, extra=(), **values):
+    def finish(self, intent, item, *, status, **values):
         updated = revised(item, status=status, **values)
         # The outcome is recorded even if the owner lost access; the event only names them.
         owner = Context(item["owner"], {"id": intent["h"]}, {}, {})
         self.store.transact(
             [
-                *extra,
                 put("Domain", updated, item),
                 put("Delivery", self.domain.done_intent(intent), intent),
                 self.domain.event(owner, item["id"], updated["rev"], kind="calendar", mode="real"),
