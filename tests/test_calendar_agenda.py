@@ -384,3 +384,45 @@ def test_an_event_created_during_a_revocation_is_still_recorded(agenda):
     agenda_service.sweep()
     saved = h.domain.store.get("Domain", (hkey(h.h), f"CALPROPOSAL#{proposal['id']}"))
     assert saved["status"] == "CREATED" and len(service.google.inserts) == 1
+
+
+def test_an_unfinished_first_sync_is_reported_as_incomplete(agenda):
+    h, service, _ = agenda
+    connection = connect(h)
+    now = h.clock()
+
+    def window():
+        return h.client.get(
+            "/v1/agenda", params={"from": now, "to": now + 86400}, headers=h.headers()
+        ).json()
+
+    assert window()["truncated"] is True
+    service.google.pages = [{"items": [], "nextSyncToken": "sync-1"}]
+    service.sync(h.domain.context("alex", h.h), connection["id"])
+    assert window()["truncated"] is False
+
+
+def test_proposal_changes_reach_only_the_owners_activity(agenda):
+    h, _, _ = agenda
+    connect(h)
+    propose(h, draft(h))
+    for event in h.engine.pending("OUTBOX"):
+        if event["envelope"]["type"] == "koyori.proposal.changed.v1":
+            h.engine.project_activity(event["envelope"])
+    own = h.client.get("/v1/activity", headers=h.headers()).json()["items"]
+    other = h.client.get("/v1/activity", headers=h.headers("sam")).json()["items"]
+    assert any(e["type"] == "koyori.proposal.changed.v1" for e in own)
+    assert not any(e["type"] == "koyori.proposal.changed.v1" for e in other)
+
+
+def test_voice_playback_rechecks_a_proposal_not_a_task(agenda):
+    h, _, _ = agenda
+    connect(h)
+    sessions, grant = admission(h)
+    sessions.consume(grant["ticket"], grant["runtimeSessionId"])
+    bridge = VoiceSession(h.domain, grant["runtimeSessionId"], h.client.app.state.mcp.tools)
+    proposal = bridge.tool("call-1", "propose_calendar_event", draft(h))
+    bridge.validate_result(proposal)
+    decide(h, proposal, "reject")
+    with pytest.raises(Problem, match="CONTEXT_CHANGED"):
+        bridge.validate_result(proposal)

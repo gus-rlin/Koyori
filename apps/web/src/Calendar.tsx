@@ -152,8 +152,7 @@ export function TodaySchedule({
       </div>
       {truncated && (
         <p className="panel-note">
-          Agenda incomplet : tous les événements synchronisés n’ont pas pu être
-          parcourus.
+          Agenda incomplet : certains événements ne sont pas encore affichés.
         </p>
       )}
       {!connected ? (
@@ -293,8 +292,7 @@ export function AgendaPage({
         <h2>Les sept prochains jours</h2>
         {truncated && (
           <p className="panel-note">
-            Agenda incomplet : tous les événements synchronisés n’ont pas pu
-            être parcourus.
+            Agenda incomplet : certains événements ne sont pas encore affichés.
           </p>
         )}
         {days.size ? (

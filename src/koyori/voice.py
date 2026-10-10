@@ -55,7 +55,13 @@ class VoiceSession:
     def validate_result(self, value):
         ctx, session = self.check()
         checks = self.tools.result_checks(ctx, value)
-        if value.get("id") and "status" in value:
+        if "calendarId" in value:
+            # A calendar proposal: its owner may have decided it before playback.
+            current = self.tools.agenda.get(ctx, value["id"])
+            if current["rev"] != value.get("rev"):
+                raise Problem(503, "CONTEXT_CHANGED", "Proposal changed before playback.", True)
+            checks.append(guard("Domain", current))
+        elif value.get("id") and "status" in value:
             current, authority = self.domain.task_access(ctx, value["id"])
             if current["rev"] != value.get("rev"):
                 raise Problem(503, "CONTEXT_CHANGED", "Task changed before playback.", True)

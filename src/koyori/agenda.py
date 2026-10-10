@@ -112,7 +112,7 @@ class Agenda(Service):
             [
                 guard("Domain", connection),
                 put("Domain", item),
-                self.domain.event(ctx, pid, 1, kind="calendar", mode="real"),
+                self.domain.event(ctx, pid, 1, kind="proposal", mode="real"),
             ],
             False,
         )
@@ -145,7 +145,7 @@ class Agenda(Service):
                     ),
                 ),
             ]
-        writes.append(self.domain.event(ctx, pid, updated["rev"], kind="calendar", mode="real"))
+        writes.append(self.domain.event(ctx, pid, updated["rev"], kind="proposal", mode="real"))
         return projection(updated), writes, False
 
     def sweep(self):
@@ -240,7 +240,7 @@ class Agenda(Service):
             [
                 put("Domain", updated, item),
                 put("Delivery", self.domain.done_intent(intent), intent),
-                self.domain.event(owner, item["id"], updated["rev"], kind="calendar", mode="real"),
+                self.domain.event(owner, item["id"], updated["rev"], kind="proposal", mode="real"),
             ]
         )
 
@@ -262,6 +262,8 @@ class Agenda(Service):
                 if state and state.get("completedGeneration"):
                     completed[calendar_id] = state["completedGeneration"]
                     synced.append(state.get("lastSyncedAt"))
+                else:
+                    truncated = True  # The first full sync of this calendar is still running.
             after = None
             for _ in range(40):
                 rows, after = self.store.query(
